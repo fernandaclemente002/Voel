@@ -52,10 +52,15 @@ function ForgotPassword() {
               onChange={e => setEmail(e.target.value)}
             />
 
-            <button
+           <button
               type="submit"
               disabled={loading}
-              className="animate-shine group relative w-full max-w-[250px] flex justify-center py-3.5 px-4 border border-transparent text-xs font-bold rounded-full text-white bg-voel-charcoal hover:bg-voel-gold focus:outline-none transition-all duration-500 shadow-lg active:scale-95 disabled:opacity-50 tracking-[0.2em]"
+              className="animate-shine group relative w-full max-w-[250px] flex justify-center py-3.5 px-4 border border-transparent text-xs font-bold rounded-full text-white bg-voel-charcoal 
+                        /* No PC: */
+                        hover:bg-voel-gold 
+                        /* No Celular (Toque): */
+                        active:bg-voel-gold-dark active:scale-95 
+                        transition-all duration-300 shadow-lg disabled:opacity-50 tracking-[0.2em]"
             >
               {loading ? 'ENVIANDO...' : 'ENVIAR LINK'}
             </button>
