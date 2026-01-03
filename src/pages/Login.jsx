@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom' // Importação única e correta
 import { useState } from 'react'
 import { supabase } from '../library/supabase'
 
@@ -6,6 +6,7 @@ function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate() // 1. Inicializa o hook de navegação
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -21,7 +22,8 @@ function Login() {
     if (error) {
       alert(error.message)
     } else {
-      alert('Login realizado com sucesso')
+      // 2. Após o login, manda o usuário para a Home
+      navigate('/home') 
     }
   }
 
@@ -52,10 +54,10 @@ function Login() {
           {loading ? 'Entrando...' : 'Entrar'}
         </button>
       </form>
-        {/* A O LINK pra conectar com a página Reset-password */}
-    <p>
-  <Link to="/forgot-password">Esqueci minha senha</Link>
-</p>
+
+      <p>
+        <Link to="/forgot-password">Esqueci minha senha</Link>
+      </p>
     </div>
   )
 }
