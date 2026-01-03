@@ -9,12 +9,10 @@ function ResetPassword() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // Escuta mudanças na autenticação para capturar o evento de recuperação de senha
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event) => {
       if (event === "PASSWORD_RECOVERY") {
-        console.log("Usuário veio pelo link de recuperação.");
+        console.log("Recuperação de senha ativa.");
       } else if (event === "SIGNED_OUT") {
-        // Se não houver evento de recuperação ou sessão, manda para o login
         alert('Sessão inválida ou link expirado.');
         navigate('/login');
       }
@@ -31,24 +29,17 @@ function ResetPassword() {
 
   async function handleReset(e) {
     e.preventDefault()
-
     if (password !== confirmPassword) {
       alert('As senhas não conferem!')
       return
     }
-
     if (!isStrongPassword(password)) {
       alert('Senha fraca! Use 8+ caracteres, letra maiúscula e número.')
       return
     }
 
     setLoading(true)
-
-    // O updateUser funciona porque o Supabase já autenticou o usuário via link do email
-    const { error } = await supabase.auth.updateUser({
-      password: password,
-    })
-
+    const { error } = await supabase.auth.updateUser({ password })
     setLoading(false)
 
     if (error) {
@@ -60,29 +51,46 @@ function ResetPassword() {
   }
 
   return (
-    <div>
-      <h2>Redefinir senha</h2>
-      <form onSubmit={handleReset}>
-        <input
-          type="password"
-          placeholder="Nova senha"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-        />
-        <br />
-        <input
-          type="password"
-          placeholder="Confirme a nova senha"
-          value={confirmPassword}
-          onChange={e => setConfirmPassword(e.target.value)}
-          required
-        />
-        <br />
-        <button type="submit" disabled={loading}>
-          {loading ? 'Redefinindo...' : 'Redefinir senha'}
-        </button>
-      </form>
+    <div className="min-h-screen flex items-center justify-center bg-voel-beige px-4">
+      <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
+        <div>
+          <h2 className="mt-6 text-3xl font-serif font-light text-voel-charcoal tracking-[0.3em] uppercase">
+            VÖEL
+          </h2>
+          <p className="mt-2 text-sm text-gray-500 font-sans italic">
+            Nova senha
+          </p>
+        </div>
+
+        <form className="mt-8 space-y-5 flex flex-col items-center" onSubmit={handleReset}>
+          <div className="space-y-4 w-full text-left">
+            <input
+              type="password"
+              placeholder="Nova senha"
+              required
+              className="appearance-none block w-full px-4 py-3 border-2 border-voel-gold/40 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:border-voel-gold sm:text-sm transition-all duration-300 bg-transparent"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+            />
+            <input
+              type="password"
+              placeholder="Confirme a nova senha"
+              required
+              className="appearance-none block w-full px-4 py-3 border-2 border-voel-gold/40 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:border-voel-gold sm:text-sm transition-all duration-300 bg-transparent"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="animate-shine group relative w-full max-w-[250px] flex justify-center py-3.5 px-4 border border-transparent text-xs font-bold rounded-full text-white bg-voel-charcoal hover:bg-voel-gold focus:outline-none transition-all duration-500 shadow-lg active:scale-95 disabled:opacity-50 tracking-[0.2em]"
+          >
+            {loading ? 'REDEFININDO...' : 'REDEFINIR SENHA'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }

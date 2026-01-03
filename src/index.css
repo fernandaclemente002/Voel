@@ -2,7 +2,8 @@
 
 @theme {
   --color-voel-beige: #F9F7F2;
-  --color-voel-gold: #D2B48C;
+  --color-voel-gold: #C5A47E; /* Dourado levemente mais profundo para leitura */
+  --color-voel-gold-light: #D2B48C;
   --color-voel-charcoal: #1A1A1A;
   
   --font-serif: "Playfair Display", serif;
@@ -16,8 +17,26 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
-  
-  h1, h2, h3, .font-serif {
-    font-family: var(--font-serif);
-  }
+}
+
+/* Efeito de Brilho Refinado */
+@keyframes shine {
+  100% { left: 125%; }
+}
+.animate-shine {
+  position: relative;
+  overflow: hidden;
+}
+.animate-shine::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent);
+  transform: skewX(-25deg);
+}
+.animate-shine:hover::after {
+  animation: shine 0.8s forwards;
 }
