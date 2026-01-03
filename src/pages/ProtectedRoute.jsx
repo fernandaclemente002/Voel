@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../library/supabase'
-
+//cod pra proteger rotas (home)
 //Existem duas formas de exportar um componente em React, e ambas funcionam:
 //Export Default na frente da função (Como eu fiz)
 //Eu coloquei o export default diretamente na linha onde a função é criada:
