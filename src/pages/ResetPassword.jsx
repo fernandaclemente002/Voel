@@ -1,38 +1,44 @@
 import { useState } from 'react'
 import { supabase } from '../library/supabase'
 
-function ForgotPassword() {
+function ResetPassword() {
   const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function handleReset(e) {
     e.preventDefault()
+    setLoading(true)
 
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://voel.vercel.app/reset-password'
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'https://seusite.vercel.app/login'
     })
+
+    setLoading(false)
 
     if (error) {
       alert(error.message)
     } else {
-      alert('Verifique seu email para redefinir a senha!')
+      alert('Email de redefinição enviado! Verifique sua caixa de entrada.')
     }
   }
 
   return (
     <div>
-      <h2>Esqueci minha senha</h2>
+      <h2>Redefinir senha</h2>
       <form onSubmit={handleReset}>
         <input
           type="email"
-          placeholder="Digite seu email"
+          placeholder="Seu email"
           value={email}
           onChange={e => setEmail(e.target.value)}
         />
         <br />
-        <button type="submit">Enviar link de redefinição</button>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Enviando...' : 'Enviar email'}
+        </button>
       </form>
     </div>
   )
 }
 
-export default ForgotPassword
+export default ResetPassword

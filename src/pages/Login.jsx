@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { supabase } from '../library/supabase'
 
@@ -51,6 +52,10 @@ function Login() {
           {loading ? 'Entrando...' : 'Entrar'}
         </button>
       </form>
+        {/* A O LINK pra conectar com a página Reset-password */}
+      <p>
+        <Link to="/reset-password">Esqueci minha senha</Link>
+      </p>
     </div>
   )
 }
