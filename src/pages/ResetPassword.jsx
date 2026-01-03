@@ -10,7 +10,7 @@ function ResetPassword() {
     setLoading(true)
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://seusite.vercel.app/login'
+      redirectTo: 'https://voel-lovat.vercel.app/login'
     })
 
     setLoading(false)
