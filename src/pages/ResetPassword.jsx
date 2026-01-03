@@ -1,24 +1,52 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../library/supabase'
 
 function ResetPassword() {
-  const [email, setEmail] = useState('')
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const token = searchParams.get('access_token') // token enviado no email
+
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!token) {
+      alert('Link inválido ou expirado')
+      navigate('/login')
+    }
+  }, [token])
+
+  function isStrongPassword(pw) {
+    return pw.length >= 8 && /[A-Z]/.test(pw) && /\d/.test(pw)
+  }
 
   async function handleReset(e) {
     e.preventDefault()
+    if (password !== confirmPassword) {
+      alert('As senhas não conferem!')
+      return
+    }
+
+    if (!isStrongPassword(password)) {
+      alert('Senha fraca! Use 8+ caracteres, letra maiúscula e número.')
+      return
+    }
+
     setLoading(true)
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://voel-lovat.vercel.app/login'
-    })
+    const { error } = await supabase.auth.updateUser({
+      password,
+    }, token)
 
     setLoading(false)
 
     if (error) {
       alert(error.message)
     } else {
-      alert('Email de redefinição enviado! Verifique sua caixa de entrada.')
+      alert('Senha redefinida com sucesso! Faça login.')
+      navigate('/login')
     }
   }
 
@@ -27,14 +55,21 @@ function ResetPassword() {
       <h2>Redefinir senha</h2>
       <form onSubmit={handleReset}>
         <input
-          type="email"
-          placeholder="Seu email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
+          type="password"
+          placeholder="Nova senha"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+        />
+        <br />
+        <input
+          type="password"
+          placeholder="Confirme a nova senha"
+          value={confirmPassword}
+          onChange={e => setConfirmPassword(e.target.value)}
         />
         <br />
         <button type="submit" disabled={loading}>
-          {loading ? 'Enviando...' : 'Enviar email'}
+          {loading ? 'Redefinindo...' : 'Redefinir senha'}
         </button>
       </form>
     </div>
