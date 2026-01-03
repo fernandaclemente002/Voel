@@ -9,20 +9,21 @@ function ResetPassword() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // O Supabase envia o token no hash da URL (#access_token=...)
-    // Esta função verifica se estamos autenticados via link de recuperação
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      
-      // Se não houver sessão ativa, o link pode ser inválido ou expirado
-      if (!data.session) {
-        alert('Sessão inválida ou link expirado. Solicite um novo e-mail.')
-        navigate('/login')
+    // Escuta mudanças na autenticação para capturar o evento de recuperação de senha
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        console.log("Usuário veio pelo link de recuperação.");
+      } else if (event === "SIGNED_OUT") {
+        // Se não houver evento de recuperação ou sessão, manda para o login
+        alert('Sessão inválida ou link expirado.');
+        navigate('/login');
       }
-    }
+    });
 
-    checkSession()
-  }, [navigate])
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   function isStrongPassword(pw) {
     return pw.length >= 8 && /[A-Z]/.test(pw) && /\d/.test(pw)
@@ -43,8 +44,7 @@ function ResetPassword() {
 
     setLoading(true)
 
-    // Aqui não precisamos passar o token manualmente, 
-    // o Supabase já o validou na sessão ao abrir o link
+    // O updateUser funciona porque o Supabase já autenticou o usuário via link do email
     const { error } = await supabase.auth.updateUser({
       password: password,
     })
