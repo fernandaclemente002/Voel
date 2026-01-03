@@ -5,6 +5,7 @@ import ResetPassword from './pages/ResetPassword'
 import ForgotPassword from './pages/ForgotPassword'
 import Home from './pages/Home' 
 import ProtectedRoute from './pages/ProtectedRoute' 
+import Profile from './pages/Profile' 
 
 function App() {
   return (
@@ -13,12 +14,34 @@ function App() {
         {/* Rota inicial: manda para o login */}
         <Route path="/" element={<Navigate to="/login" />} />
         
-        {/* ROTA PROTEGIDA: Envolve a Home */}
+        {/* ROTAS PROTEGIDAS */}
         <Route 
           path="/home" 
           element={
             <ProtectedRoute>
               <Home />
+            </ProtectedRoute>
+          } 
+        />
+
+        <Route 
+          path="/perfil" 
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          } 
+        />
+
+        <Route 
+          path="/favoritos" 
+          element={
+            <ProtectedRoute>
+              {/* Exemplo simples até você criar a página de favoritos */}
+              <div className="pt-32 text-center bg-voel-beige min-h-screen">
+                <h1 className="font-serif text-2xl tracking-widest uppercase">Favoritos</h1>
+                <p className="mt-4 italic">Sua lista de desejos em breve.</p>
+              </div>
             </ProtectedRoute>
           } 
         />
