@@ -58,6 +58,11 @@ function Login() {
       <p>
         <Link to="/forgot-password">Esqueci minha senha</Link>
       </p>
+
+      <p>
+        Não tem uma conta? <Link to="/register">Cadastre-se</Link>
+      </p>
+
     </div>
   )
 }

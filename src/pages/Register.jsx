@@ -1,18 +1,14 @@
 import { useState } from 'react'
 import { supabase } from '../library/supabase'
+import { useNavigate, Link } from 'react-router-dom' // Adicione Link e useNavigate
 
 function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const navigate = useNavigate() // Inicialize aqui
 
-  function isStrongPassword(password) {
-    return (
-      password.length >= 8 &&
-      /[A-Z]/.test(password) &&
-      /\d/.test(password)
-    )
-  }
+  // ... mantenha sua função isStrongPassword ...
 
   async function handleRegister(e) {
     e.preventDefault()
@@ -35,47 +31,23 @@ function Register() {
     if (error) {
       alert(error.message)
     } else {
-      alert('Cadastro feito! Verifique seu e-mail.')
+      alert('Cadastro feito! Verifique seu e-mail para confirmar a conta.')
+      navigate('/login') // Manda para o login após cadastrar
     }
   }
 
   return (
     <div>
       <h2>Criar conta</h2>
-
       <form onSubmit={handleRegister}>
-        <input
-          type="email"
-          placeholder="E-mail"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-        />
-
-        <br />
-
-        <input
-          type="password"
-          placeholder="Senha"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-        />
-
-        <br />
-
-        <input
-          type="password"
-          placeholder="Confirmar senha"
-          value={confirmPassword}
-          onChange={e => setConfirmPassword(e.target.value)}
-          required
-        />
-
-        <br />
-
+        {/* ... seus inputs ... */}
         <button type="submit">Cadastrar</button>
       </form>
+
+      {/* Adicione um link para voltar se ele já tiver conta */}
+      <p>
+        Já tem uma conta? <Link to="/login">Faça login</Link>
+      </p>
     </div>
   )
 }
