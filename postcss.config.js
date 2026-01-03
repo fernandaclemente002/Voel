@@ -1,6 +1,7 @@
-export default {//Como transformar as classes do Tailwind em CSS que o navegador entende.
+//Como transformar as classes do Tailwind em CSS que o navegador entende.
+export default {
   plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
+    '@tailwindcss/postcss': {},
+    'autoprefixer': {},
   },
 }
