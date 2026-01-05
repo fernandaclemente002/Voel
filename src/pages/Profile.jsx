@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { 
   Camera, Monitor, UserCircle, 
   Settings, PlusCircle, Users, 
-  ChevronRight, Bell, ArrowLeft, ShieldCheck, Mail, Lock
+  ChevronRight, Bell, ArrowLeft, ShieldCheck, Mail, Lock, MinusCircle
 } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
 
@@ -140,6 +140,15 @@ function Profile() {
     window.location.href = destination;
   };
 
+  const handleRemoveAccount = (emailToRemove) => {
+  if (window.confirm(`Deseja desconectar a conta ${emailToRemove}? Você precisará fazer login novamente para acessá-la.`)) {
+    const accounts = JSON.parse(localStorage.getItem('voel_accounts') || '[]')
+    const filtered = accounts.filter(acc => acc.email !== emailToRemove)
+    
+    localStorage.setItem('voel_accounts', JSON.stringify(filtered))
+    setLinkedAccounts(filtered) // Atualiza a lista na tela imediatamente
+  }
+}
   const MenuRow = ({ icon: Icon, label, value, onClick }) => (
     <button onClick={onClick} className="w-full flex items-center justify-between py-4 border-b border-gray-50 hover:bg-gray-50/50 transition-colors px-2">
       <div className="flex items-center space-x-4">
@@ -320,50 +329,65 @@ function Profile() {
           </div>
         )}
 
-        {/* --- VIEW: TROCAR DE CONTA --- */}
-        {view === 'contas' && (
-          <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-right-4 duration-300">
-            <button onClick={() => setView('menu')} className="text-[10px] text-gray-400 uppercase tracking-widest mb-8 flex items-center hover:text-voel-gold transition-colors">
-              <ArrowLeft size={14} className="mr-2" /> Voltar
-            </button>
-            <h2 className="font-serif text-xl tracking-[0.2em] uppercase mb-8">Suas Contas</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-xl border-2 border-voel-gold bg-voel-gold/5">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-voel-gold/20 text-voel-gold font-serif">
-                    {newName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'V'}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-voel-charcoal uppercase">{newName || 'Usuário Atual'}</p>
-                    <p className="text-[10px] text-gray-500">{user?.email}</p>
-                  </div>
-                </div>
-                <span className="text-[8px] bg-voel-gold text-white px-2 py-1 rounded-full uppercase tracking-tighter font-bold">Ativa</span>
-              </div>
-              {linkedAccounts.filter(acc => acc.email !== user?.email).map((acc, index) => (
-                <button 
-                  key={index} 
-                  onClick={() => handleSwitchAccount(acc.email)}
-                  className="w-full flex items-center p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors group"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 font-serif group-hover:bg-voel-gold group-hover:text-white transition-colors">
-                      {acc.name?.charAt(0) || acc.email.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="text-left">
-                      <p className="text-xs font-medium text-voel-charcoal uppercase">{acc.name}</p>
-                      <p className="text-[10px] text-gray-400">{acc.email}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
-              <button onClick={() => navigate('/login')} className="w-full flex items-center justify-center space-x-2 p-4 rounded-xl border-2 border-dashed border-gray-100 text-gray-400 hover:border-voel-gold hover:text-voel-gold transition-all">
-                <PlusCircle size={18} />
-                <span className="text-xs uppercase tracking-widest font-medium">Adicionar nova conta</span>
-              </button>
-            </div>
+{/* --- VIEW: TROCAR DE CONTA --- */}
+{view === 'contas' && (
+  <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-right-4 duration-300">
+    <button onClick={() => setView('menu')} className="text-[10px] text-gray-400 uppercase tracking-widest mb-8 flex items-center hover:text-voel-gold transition-colors">
+      <ArrowLeft size={14} className="mr-2" /> Voltar
+    </button>
+    <h2 className="font-serif text-xl tracking-[0.2em] uppercase mb-8">Suas Contas</h2>
+    <div className="space-y-4">
+      
+      {/* Conta Ativa (Logada no momento) */}
+      <div className="flex items-center justify-between p-4 rounded-xl border-2 border-voel-gold bg-voel-gold/5">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-voel-gold/20 text-voel-gold font-serif">
+            {newName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'V'}
           </div>
-        )}
+          <div>
+            <p className="text-xs font-bold text-voel-charcoal uppercase">{newName || 'Usuário Atual'}</p>
+            <p className="text-[10px] text-gray-500">{user?.email}</p>
+          </div>
+        </div>
+        <span className="text-[8px] bg-voel-gold text-white px-2 py-1 rounded-full uppercase tracking-tighter font-bold">Ativa</span>
+      </div>
+
+      {/* Outras Contas (Mapeadas do LocalStorage) */}
+      {linkedAccounts.filter(acc => acc.email !== user?.email).map((acc, index) => (
+        <div key={index} className="flex items-center space-x-2 group">
+          <button 
+            onClick={() => handleSwitchAccount(acc.email)}
+            className="flex-grow flex items-center p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 font-serif group-hover:bg-voel-gold group-hover:text-white transition-colors">
+                {acc.name?.charAt(0) || acc.email.charAt(0).toUpperCase()}
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-medium text-voel-charcoal uppercase">{acc.name}</p>
+                <p className="text-[10px] text-gray-400">{acc.email}</p>
+              </div>
+            </div>
+          </button>
+
+          {/* O ícone MinusCircle entra aqui para ser "lido" e renderizado */}
+          <button 
+            onClick={() => handleRemoveAccount(acc.email)}
+            className="p-2 text-gray-300 hover:text-red-700 transition-colors"
+            title="Remover conta"
+          >
+            <MinusCircle size={20} strokeWidth={1.2} />
+          </button>
+        </div>
+      ))}
+
+      <button onClick={() => navigate('/login')} className="w-full flex items-center justify-center space-x-2 p-4 rounded-xl border-2 border-dashed border-gray-100 text-gray-400 hover:border-voel-gold hover:text-voel-gold transition-all">
+        <PlusCircle size={18} />
+        <span className="text-xs uppercase tracking-widest font-medium">Adicionar nova conta</span>
+      </button>
+    </div>
+  </div>
+)}
       </main>
     </div>
   )
