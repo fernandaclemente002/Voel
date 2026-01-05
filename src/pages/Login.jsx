@@ -16,41 +16,61 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Atualiza o campo se a URL mudar (ex: trocar de conta sem sair da página)
+  // 1. Efeito Único para capturar e-mail da URL
   useEffect(() => {
-    const emailParam = getEmailFromUrl();
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
     if (emailParam) {
-      setEmail(emailParam);
+      setEmail(decodeURIComponent(emailParam));
     }
-  }, [window.location.search]);
+  }, []); // Executa apenas ao montar o componente
 
+  // 2. Função de persistência de contas aprimorada
   const saveAccountToLocal = (user) => {
-    const accounts = JSON.parse(localStorage.getItem('voel_accounts') || '[]')
-    if (!accounts.find(acc => acc.email === user.email)) {
-      accounts.push({
-        email: user.email,
-        name: user.user_metadata?.full_name || user.email.split('@')[0]
-      })
-      localStorage.setItem('voel_accounts', JSON.stringify(accounts))
+  const accounts = JSON.parse(localStorage.getItem('voel_accounts') || '[]');
+  
+  // 1. Procuramos se já existe uma conta salva com o MESMO ID de usuário (independente do e-mail)
+  const existingIndex = accounts.findIndex(acc => acc.id === user.id);
+  
+  const userData = {
+    id: user.id, // Adicionamos o ID único do Supabase
+    email: user.email,
+    name: user.user_metadata?.full_name || user.email.split('@')[0]
+  };
+
+  if (existingIndex > -1) {
+    // 2. Se o ID existe mas o e-mail é diferente, o código abaixo 
+    // naturalmente substituirá o objeto antigo pelo novo (com e-mail atualizado)
+    accounts[existingIndex] = userData;
+  } else {
+    // 3. Se é um ID novo, verifica se por acaso esse e-mail já estava lá (segurança extra)
+    const emailIndex = accounts.findIndex(acc => acc.email === user.email);
+    if (emailIndex > -1) {
+      accounts[emailIndex] = userData;
+    } else {
+      accounts.push(userData);
     }
   }
+  
+  localStorage.setItem('voel_accounts', JSON.stringify(accounts));
+};
 
   async function handleLogin(e) {
-    e.preventDefault()
-    setLoading(true)
+    e.preventDefault();
+    setLoading(true);
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
-    })
+    });
 
     if (error) {
-      alert(error.message)
-      setLoading(false)
+      alert(error.message);
+      setLoading(false);
     } else {
-      saveAccountToLocal(data.user)
-      setLoading(false)
-      navigate('/home') 
+      saveAccountToLocal(data.user);
+      setLoading(false);
+      navigate('/home'); 
     }
   }
 
