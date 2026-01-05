@@ -23,29 +23,29 @@ function Profile() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [newEmail, setNewEmail] = useState('')
 
+// CORREÇÃO: Função para limpar duplicatas no carregamento
   useEffect(() => {
-    const accounts = JSON.parse(localStorage.getItem('voel_accounts') || '[]')
-    setLinkedAccounts(accounts)
-
-    // Função para buscar dados
     const getUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUser(user)
         setNewName(user.user_metadata?.full_name || '')
         setIsAnonymous(user.user_metadata?.is_anonymous || false)
+        
+        // Limpeza preventiva de contas fantasmas no LocalStorage
+        const accounts = JSON.parse(localStorage.getItem('voel_accounts') || '[]')
+        const filtered = accounts.filter(acc => acc.id !== user.id || acc.email === user.email)
+        localStorage.setItem('voel_accounts', JSON.stringify(filtered))
+        setLinkedAccounts(filtered)
       }
     }
-
     getUserData()
 
-    // ESCUTADOR DE SESSÃO: Isso detecta se o e-mail mudou enquanto a página estava aberta
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'USER_UPDATED' || event === 'SIGNED_IN') {
         setUser(session?.user || null)
       }
     })
-
     return () => subscription.unsubscribe()
   }, [])
 
@@ -102,28 +102,29 @@ function Profile() {
   }
 // NOVA FUNÇÃO: Atualizar E-mail
  const handleUpdateEmail = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    
-    const { error } = await supabase.auth.updateUser({ email: newEmail })
-    
-    setLoading(false)
-    if (error) {
-      alert(error.message)
-    } else {
-      alert(
-        "SOLICITAÇÃO DE SEGURANÇA VÖEL:\n\n" +
-        "1. Verifique seu e-mail ATUAL para autorizar a saída.\n" +
-        "2. Verifique seu NOVO e-mail para confirmar a alteração.\n\n" +
-        "A troca só será concluída após clicar nos DOIS links. Por segurança, você será deslogado agora."
-      )
-      
-      // LOGOUT FORÇADO: Isso limpa qualquer rastro da sessão antiga
-      // e evita que o app tente renderizar dados de um e-mail que não existe mais.
-      await supabase.auth.signOut()
-      navigate('/login')
-    }
+  e.preventDefault()
+  setLoading(true)
+  
+  // O segredo está no emailRedirectTo
+  const { error } = await supabase.auth.updateUser(
+    { email: newEmail },
+    { emailRedirectTo: `${window.location.origin}/profile` } 
+  )
+  
+  setLoading(false)
+  if (error) {
+    alert(error.message)
+  } else {
+    alert(
+      "SOLICITAÇÃO DE SEGURANÇA VÖEL:\n\n" +
+      "1. Verifique seu e-mail ATUAL para autorizar a saída.\n" +
+      "2. Verifique seu NOVO e-mail para confirmar a alteração.\n\n" +
+      "Por segurança, você será deslogado agora."
+    )
+    await supabase.auth.signOut()
+    navigate('/login')
   }
+}
 
   const handleLogout = async () => {
     if (window.confirm("Deseja encerrar sua sessão?")) {
@@ -162,22 +163,19 @@ function Profile() {
     )
   }
   
-  return (
+  return ( // Estrutura principal do componente
     <div className="min-h-screen bg-voel-beige flex flex-col font-sans">
       <Navbar />
-      
       <main className="flex-grow pt-28 pb-12 px-4 max-w-2xl mx-auto w-full">
-        
-        {/* --- VIEW: MENU PRINCIPAL --- */}
         {view === 'menu' && (
           <div className="animate-in fade-in duration-500">
             <div className="flex flex-col items-center mb-10">
               <div className="relative group cursor-pointer">
                 <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center border border-voel-gold/20 shadow-sm overflow-hidden">
-                  // Localize o span dentro da View 'menu'
-                <span className="text-3xl font-serif text-voel-gold uppercase">
-                  {newName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'V'}
-                </span>
+                  {/* CORREÇÃO: Comentário removido daqui de dentro */}
+                  <span className="text-3xl font-serif text-voel-gold uppercase">
+                    {newName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'V'}
+                  </span>
                 </div>
                 <div className="absolute bottom-0 right-0 bg-voel-charcoal p-2 rounded-full border-2 border-white text-white">
                   <Camera size={14} />

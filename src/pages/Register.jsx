@@ -4,12 +4,13 @@ import { useNavigate, Link } from 'react-router-dom'
 
 function Register() {
   const [email, setEmail] = useState('')
+  const [fullName, setFullName] = useState('') // Novo campo para o perfil não vir vazio
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  // Sua função de segurança original
+  // Sua função de segurança original mantida
   function isStrongPassword(password) {
     return (
       password.length >= 8 &&
@@ -21,29 +22,38 @@ function Register() {
   async function handleRegister(e) {
     e.preventDefault()
 
-    // Validação de senha forte (Sua lógica)
     if (!isStrongPassword(password)) {
       alert('Senha fraca. Use 8+ caracteres, letra maiúscula e número.')
       return
     }
 
-    // Validação de coincidência
     if (password !== confirmPassword) {
       alert('As senhas não coincidem.')
       return
     }
 
     setLoading(true)
+    
+    // CORREÇÃO: Enviando o nome para os metadados e configurando o redirecionamento
     const { error } = await supabase.auth.signUp({
       email,
-      password
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          is_anonymous: false
+        },
+        // Isso evita que o link de confirmação abra uma aba "perdida"
+        emailRedirectTo: `${window.location.origin}/login`
+      }
     })
+
     setLoading(false)
 
     if (error) {
       alert(error.message)
     } else {
-      alert('Cadastro realizado! Verifique seu e-mail para confirmar a conta.')
+      alert('Cadastro realizado! Verifique seu e-mail para confirmar a conta e poder acessar o sistema.')
       navigate('/login')
     }
   }
@@ -62,6 +72,16 @@ function Register() {
 
         <form className="mt-8 space-y-5 flex flex-col items-center" onSubmit={handleRegister}>
           <div className="space-y-4 w-full">
+            {/* NOVO CAMPO: Nome Completo */}
+            <input
+              type="text"
+              placeholder="Nome Completo"
+              required
+              className="appearance-none block w-full px-4 py-3 border-2 border-voel-gold/40 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:border-voel-gold sm:text-sm transition-all duration-300 bg-transparent"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+            />
+
             <input
               type="email"
               placeholder="E-mail"
@@ -96,16 +116,14 @@ function Register() {
             </Link>
           </div>
 
-         <button
-  type="submit"
-  disabled={loading}
-  className="animate-shine group relative w-full max-w-[250px] flex justify-center py-3.5 px-4 border border-transparent text-xs font-bold rounded-full text-white bg-voel-charcoal 
-             /* No PC: */
-             hover:bg-voel-gold 
-             /* No Celular (Toque): */
-             active:bg-voel-gold-dark active:scale-95 
-             transition-all duration-300 shadow-lg disabled:opacity-50 tracking-[0.2em]"
->
+          <button
+            type="submit"
+            disabled={loading}
+            className="animate-shine group relative w-full max-w-[250px] flex justify-center py-3.5 px-4 border border-transparent text-xs font-bold rounded-full text-white bg-voel-charcoal 
+                       hover:bg-voel-gold 
+                       active:bg-voel-gold-dark active:scale-95 
+                       transition-all duration-300 shadow-lg disabled:opacity-50 tracking-[0.2em]"
+          >
             {loading ? 'CADASTRANDO...' : 'CRIAR CONTA'}
           </button>
         </form>

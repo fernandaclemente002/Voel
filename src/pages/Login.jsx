@@ -27,33 +27,23 @@ function Login() {
 
   // 2. Função de persistência de contas aprimorada
   const saveAccountToLocal = (user) => {
-  const accounts = JSON.parse(localStorage.getItem('voel_accounts') || '[]');
-  
-  // 1. Procuramos se já existe uma conta salva com o MESMO ID de usuário (independente do e-mail)
-  const existingIndex = accounts.findIndex(acc => acc.id === user.id);
-  
-  const userData = {
-    id: user.id, // Adicionamos o ID único do Supabase
-    email: user.email,
-    name: user.user_metadata?.full_name || user.email.split('@')[0]
-  };
+    let accounts = JSON.parse(localStorage.getItem('voel_accounts') || '[]');
+    
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.user_metadata?.full_name || user.email.split('@')[0]
+    };
 
-  if (existingIndex > -1) {
-    // 2. Se o ID existe mas o e-mail é diferente, o código abaixo 
-    // naturalmente substituirá o objeto antigo pelo novo (com e-mail atualizado)
-    accounts[existingIndex] = userData;
-  } else {
-    // 3. Se é um ID novo, verifica se por acaso esse e-mail já estava lá (segurança extra)
-    const emailIndex = accounts.findIndex(acc => acc.email === user.email);
-    if (emailIndex > -1) {
-      accounts[emailIndex] = userData;
-    } else {
-      accounts.push(userData);
-    }
-  }
-  
-  localStorage.setItem('voel_accounts', JSON.stringify(accounts));
-};
+    // CORREÇÃO: Remove qualquer vestígio do ID antigo ou E-mail antigo antes de salvar o atual
+    // Isso impede que a "conta fantasma" (e-mail velho) coexista com a nova.
+    accounts = accounts.filter(acc => acc.id !== user.id && acc.email !== user.email);
+    
+    // Adiciona a versão atualizada
+    accounts.push(userData);
+    
+    localStorage.setItem('voel_accounts', JSON.stringify(accounts));
+  };
 
   async function handleLogin(e) {
     e.preventDefault();
