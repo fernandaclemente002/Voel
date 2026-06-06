@@ -1,7 +1,7 @@
 
-  # VÖEL
+  # VÖEL (cópia)
 
-  This is a code bundle for VÖEL. The original project is available at https://www.figma.com/design/zxup1a2a8lpMvlmQV46RuW/V%C3%96EL.
+  This is a code bundle for VÖEL (cópia). The original project is available at https://www.figma.com/design/04TZro2qSSAAcZsPDwoIXm/V%C3%96EL--c%C3%B3pia-.
 
   ## Running the code
 
