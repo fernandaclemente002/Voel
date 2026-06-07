@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Edit3, ImagePlus, Loader2, LogOut, Package, Plus, RefreshCw, Save, Tags, Trash2, Upload } from 'lucide-react';
+import { Edit3, ImagePlus, Loader2, LogOut, Package, Plus, RefreshCw, Save, Tags, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
   deleteCategory,
@@ -39,6 +39,11 @@ const emptyProductForm: ProductInput = {
   isActive: true,
 };
 
+const commonSizes = ['PP', 'P', 'M', 'G', 'GG', 'XG', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', 'Único'];
+const fieldClass = 'w-full rounded-lg border border-[#D8D0C4] px-3 py-3 text-base outline-none transition-colors focus:border-[#8B7355] sm:text-sm';
+const selectClass = `${fieldClass} bg-white`;
+const labelClass = 'text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]';
+
 type ColorImageRow = {
   id: string;
   color: string;
@@ -63,15 +68,51 @@ function formatPrice(value: number) {
   }).format(value);
 }
 
-function splitCommaList(value: string) {
+function normalizeComparable(value: string) {
   return value
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean);
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 }
 
-function joinCommaList(values: string[]) {
-  return values.join(', ');
+function parsePriceInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed.includes(',')
+    ? trimmed.replace(/\./g, '').replace(',', '.')
+    : trimmed;
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseIntegerInput(value: string, min: number) {
+  const trimmed = value.trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= min ? parsed : null;
+}
+
+function formatPriceInput(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '';
+
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function uniqueTextValues(values: string[]) {
+  return values.reduce<string[]>((uniqueValues, value) => {
+    const trimmed = value.trim();
+    if (!trimmed) return uniqueValues;
+
+    const alreadyExists = uniqueValues.some(existing => normalizeComparable(existing) === normalizeComparable(trimmed));
+    return alreadyExists ? uniqueValues : [...uniqueValues, trimmed];
+  }, []);
 }
 
 function createColorImageRow(color = '', imageUrl = ''): ColorImageRow {
@@ -87,8 +128,27 @@ function createColorImageRow(color = '', imageUrl = ''): ColorImageRow {
   };
 }
 
-function colorImagesToRows(colorImages: Record<string, string> = {}) {
-  return Object.entries(colorImages).map(([color, imageUrl]) => createColorImageRow(color, imageUrl));
+function findColorImage(colorImages: Record<string, string>, color: string) {
+  const normalizedColor = normalizeComparable(color);
+  return Object.entries(colorImages).find(([imageColor]) => normalizeComparable(imageColor) === normalizedColor)?.[1] ?? '';
+}
+
+function productColorRows(product: Product) {
+  const colors = uniqueTextValues([
+    ...product.availableColors,
+    ...Object.keys(product.colorImages),
+  ]);
+
+  return colors.map(color => createColorImageRow(color, findColorImage(product.colorImages, color)));
+}
+
+function FormBlock({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-4 border-b border-[#E5E0D8] pb-6 last:border-b-0 last:pb-0">
+      <h3 className="font-serif text-sm uppercase tracking-[0.2em] text-[#3D3835]">{title}</h3>
+      {children}
+    </section>
+  );
 }
 
 interface AdminDashboardProps {
@@ -108,8 +168,11 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [categoryForm, setCategoryForm] = useState<CategoryInput>(emptyCategoryForm);
   const [productForm, setProductForm] = useState<ProductInput>(emptyProductForm);
-  const [sizesText, setSizesText] = useState('');
-  const [colorsText, setColorsText] = useState('');
+  const [priceText, setPriceText] = useState('');
+  const [stockText, setStockText] = useState('0');
+  const [installmentsText, setInstallmentsText] = useState('1');
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [customSizeText, setCustomSizeText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [colorImageRows, setColorImageRows] = useState<ColorImageRow[]>([]);
 
@@ -140,8 +203,11 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const resetProductForm = () => {
     setProductForm(emptyProductForm);
     setEditingProductId(null);
-    setSizesText('');
-    setColorsText('');
+    setPriceText('');
+    setStockText('0');
+    setInstallmentsText('1');
+    setSelectedSizes([]);
+    setCustomSizeText('');
     setImageFile(null);
     setColorImageRows([]);
   };
@@ -152,6 +218,27 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
       name,
       slug: previous.slug ? previous.slug : slugify(name),
     }));
+  };
+
+  const handleToggleSize = (size: string) => {
+    setSelectedSizes(previous => {
+      const isSelected = previous.some(selectedSize => normalizeComparable(selectedSize) === normalizeComparable(size));
+      return isSelected
+        ? previous.filter(selectedSize => normalizeComparable(selectedSize) !== normalizeComparable(size))
+        : uniqueTextValues([...previous, size]);
+    });
+  };
+
+  const handleRemoveSize = (size: string) => {
+    setSelectedSizes(previous => previous.filter(selectedSize => normalizeComparable(selectedSize) !== normalizeComparable(size)));
+  };
+
+  const handleAddCustomSize = () => {
+    const customSize = customSizeText.trim();
+    if (!customSize) return;
+
+    setSelectedSizes(previous => uniqueTextValues([...previous, customSize]));
+    setCustomSizeText('');
   };
 
   const handleCategorySubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -185,8 +272,28 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setError('');
 
     try {
+      if (!productForm.name.trim()) {
+        throw new Error('name-required');
+      }
+
       if (!productForm.categoryId) {
         throw new Error('category-required');
+      }
+
+      const price = parsePriceInput(priceText);
+      const stockQuantity = parseIntegerInput(stockText, 0);
+      const maxInstallments = parseIntegerInput(installmentsText, 1);
+
+      if (price === null) {
+        throw new Error('price-required');
+      }
+
+      if (stockQuantity === null) {
+        throw new Error('stock-required');
+      }
+
+      if (maxInstallments === null) {
+        throw new Error('installments-required');
       }
 
       let imageUrl = productForm.imageUrl;
@@ -198,15 +305,22 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
         imagePath = uploadedImage.imagePath;
       }
 
-      if (!imageUrl) {
-        throw new Error('image-required');
-      }
-
       const colorImages: Record<string, string> = {};
+      const availableColors: string[] = [];
 
       for (const row of colorImageRows) {
         const color = row.color.trim();
+        const rowHasImage = Boolean(row.file || row.imageUrl.trim());
+
+        if (!color && rowHasImage) {
+          throw new Error('color-name-required');
+        }
+
         if (!color) continue;
+
+        if (!availableColors.some(existingColor => normalizeComparable(existingColor) === normalizeComparable(color))) {
+          availableColors.push(color);
+        }
 
         let colorImageUrl = row.imageUrl.trim();
 
@@ -220,14 +334,24 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
         }
       }
 
+      if (!imageUrl) {
+        imageUrl = Object.values(colorImages)[0] ?? '';
+      }
+
+      if (!imageUrl) {
+        throw new Error('image-required');
+      }
+
       await saveProduct(
         {
           ...productForm,
           imageUrl,
           imagePath,
-          maxInstallments: Math.max(1, Number(productForm.maxInstallments) || 1),
-          availableSizes: splitCommaList(sizesText),
-          availableColors: splitCommaList(colorsText),
+          price,
+          stockQuantity,
+          maxInstallments,
+          availableSizes: uniqueTextValues(selectedSizes),
+          availableColors,
           colorImages,
           sku: productForm.sku?.trim() || null,
           details: productForm.details?.trim() || null,
@@ -239,10 +363,20 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
       await loadCatalog();
     } catch (saveError) {
       const typedError = saveError as Error;
-      if (typedError.message === 'category-required') {
+      if (typedError.message === 'name-required') {
+        setError('Informe o nome do produto.');
+      } else if (typedError.message === 'category-required') {
         setError('Selecione uma categoria para o produto.');
+      } else if (typedError.message === 'price-required') {
+        setError('Informe um preço válido maior que zero.');
+      } else if (typedError.message === 'stock-required') {
+        setError('Informe um estoque válido, com número inteiro maior ou igual a zero.');
+      } else if (typedError.message === 'installments-required') {
+        setError('Informe uma quantidade de parcelas válida, com número inteiro maior ou igual a 1.');
       } else if (typedError.message === 'image-required') {
-        setError('Envie uma imagem para o produto.');
+        setError('Envie uma imagem principal ou uma imagem em alguma variação de cor.');
+      } else if (typedError.message === 'color-name-required') {
+        setError('Informe o nome da cor nas variações que têm imagem.');
       } else {
         setError('Não foi possível salvar o produto.');
       }
@@ -283,10 +417,13 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
       details: product.details ?? '',
       isActive: product.isActive,
     });
-    setSizesText(joinCommaList(product.availableSizes));
-    setColorsText(joinCommaList(product.availableColors));
+    setPriceText(formatPriceInput(product.price));
+    setStockText(String(product.stockQuantity ?? 0));
+    setInstallmentsText(String(Math.max(1, Number(product.maxInstallments) || 1)));
+    setSelectedSizes(uniqueTextValues(product.availableSizes));
+    setCustomSizeText('');
     setImageFile(null);
-    setColorImageRows(colorImagesToRows(product.colorImages));
+    setColorImageRows(productColorRows(product));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -419,218 +556,240 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                 </button>
               </div>
 
-              <div className="space-y-4">
-                <label className="block space-y-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Nome</span>
-                  <input
-                    value={productForm.name}
-                    onChange={(event) => setProductForm(previous => ({ ...previous, name: event.target.value }))}
-                    className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                    required
-                  />
-                </label>
-
-                <label className="block space-y-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Descrição</span>
-                  <textarea
-                    value={productForm.description}
-                    onChange={(event) => setProductForm(previous => ({ ...previous, description: event.target.value }))}
-                    className="min-h-24 w-full resize-y rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                    required
-                  />
-                </label>
-
-                <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-6">
+                <FormBlock title="Informações principais">
                   <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Preço</span>
+                    <span className={labelClass}>Nome</span>
                     <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={productForm.price}
-                      onChange={(event) => setProductForm(previous => ({ ...previous, price: Number(event.target.value) }))}
-                      className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                      required
+                      value={productForm.name}
+                      onChange={(event) => setProductForm(previous => ({ ...previous, name: event.target.value }))}
+                      className={fieldClass}
+                      placeholder="Nome do produto"
                     />
                   </label>
 
-                  <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Parcelas</span>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={productForm.maxInstallments}
-                      onChange={(event) => setProductForm(previous => ({ ...previous, maxInstallments: Math.max(1, Number(event.target.value) || 1) }))}
-                      className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                      required
-                    />
-                  </label>
-                </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>SKU</span>
+                      <input
+                        value={productForm.sku ?? ''}
+                        onChange={(event) => setProductForm(previous => ({ ...previous, sku: event.target.value }))}
+                        className={fieldClass}
+                        placeholder="Opcional"
+                      />
+                    </label>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Estoque</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={productForm.stockQuantity}
-                      onChange={(event) => setProductForm(previous => ({ ...previous, stockQuantity: Number(event.target.value) }))}
-                      className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                      required
-                    />
-                  </label>
-
-                  <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">SKU</span>
-                    <input
-                      value={productForm.sku ?? ''}
-                      onChange={(event) => setProductForm(previous => ({ ...previous, sku: event.target.value }))}
-                      className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                      placeholder="Opcional"
-                    />
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Categoria</span>
-                    <select
-                      value={productForm.categoryId ?? ''}
-                      onChange={(event) => setProductForm(previous => ({ ...previous, categoryId: event.target.value || null }))}
-                      className="w-full rounded-lg border border-[#D8D0C4] bg-white px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                      required
-                    >
-                      <option value="">Selecione</option>
-                      {categories.map(category => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}{category.isActive ? '' : ' (inativa)'}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Tag</span>
-                    <select
-                      value={productForm.tag}
-                      onChange={(event) => setProductForm(previous => ({ ...previous, tag: event.target.value as ProductTag }))}
-                      className="w-full rounded-lg border border-[#D8D0C4] bg-white px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                    >
-                      {productTags.map(tag => (
-                        <option key={tag} value={tag}>{tag}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <label className="flex items-center gap-3 rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={productForm.isActive}
-                    onChange={(event) => setProductForm(previous => ({ ...previous, isActive: event.target.checked }))}
-                    className="h-4 w-4 accent-[#8B7355]"
-                  />
-                  Produto ativo
-                </label>
-
-                <label className="block space-y-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Tamanhos disponíveis</span>
-                  <input
-                    value={sizesText}
-                    onChange={(event) => setSizesText(event.target.value)}
-                    className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                    placeholder="P, M, G, GG"
-                  />
-                </label>
-
-                <label className="block space-y-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Cores disponíveis</span>
-                  <input
-                    value={colorsText}
-                    onChange={(event) => setColorsText(event.target.value)}
-                    className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                    placeholder="Preto, Bege, Vermelho"
-                  />
-                </label>
-
-                <label className="block space-y-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Descrição detalhada</span>
-                  <textarea
-                    value={productForm.details ?? ''}
-                    onChange={(event) => setProductForm(previous => ({ ...previous, details: event.target.value }))}
-                    className="min-h-24 w-full resize-y rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
-                    placeholder="Opcional"
-                  />
-                </label>
-
-                <label className="block space-y-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Imagem</span>
-                  <span className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-4 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
-                    <Upload size={16} /> {imageFile ? imageFile.name : 'Enviar imagem'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
-                    />
-                  </span>
-                </label>
-
-                {imagePreview && (
-                  <div className="overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
-                    <img src={imagePreview} alt="Prévia do produto" className="h-48 w-full object-cover" />
+                    <label className="flex min-h-12 items-center gap-3 rounded-lg border border-[#D8D0C4] px-3 py-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={productForm.isActive}
+                        onChange={(event) => setProductForm(previous => ({ ...previous, isActive: event.target.checked }))}
+                        className="h-5 w-5 accent-[#8B7355]"
+                      />
+                      Produto ativo
+                    </label>
                   </div>
-                )}
 
-                <div className="space-y-3 rounded-lg border border-[#E5E0D8] bg-[#FDFCF7] p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Imagens por cor</p>
-                      <p className="mt-1 text-xs text-[#9B8F7E]">Opcional. Use os mesmos nomes das cores disponíveis.</p>
+                  <label className="block space-y-1.5">
+                    <span className={labelClass}>Imagem principal</span>
+                    <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-4 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
+                      <Upload size={16} /> {imageFile ? imageFile.name : imagePreview ? 'Trocar imagem principal' : 'Enviar imagem principal'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+                      />
+                    </span>
+                  </label>
+
+                  {imagePreview && (
+                    <div className="overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
+                      <img src={imagePreview} alt="Prévia do produto" className="h-48 w-full object-cover" />
                     </div>
+                  )}
+                </FormBlock>
+
+                <FormBlock title="Preço e estoque">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Preço</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={priceText}
+                        onChange={(event) => setPriceText(event.target.value)}
+                        className={fieldClass}
+                        placeholder="399,99"
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Estoque</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={stockText}
+                        onChange={(event) => setStockText(event.target.value)}
+                        className={fieldClass}
+                        placeholder="0"
+                      />
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Parcelas</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={installmentsText}
+                        onChange={(event) => setInstallmentsText(event.target.value)}
+                        className={fieldClass}
+                        placeholder="1"
+                      />
+                    </label>
+                  </div>
+                </FormBlock>
+
+                <FormBlock title="Categoria e tag">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Categoria</span>
+                      <select
+                        value={productForm.categoryId ?? ''}
+                        onChange={(event) => setProductForm(previous => ({ ...previous, categoryId: event.target.value || null }))}
+                        className={selectClass}
+                      >
+                        <option value="">Selecione</option>
+                        {categories.map(category => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}{category.isActive ? '' : ' (inativa)'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Tag</span>
+                      <select
+                        value={productForm.tag}
+                        onChange={(event) => setProductForm(previous => ({ ...previous, tag: event.target.value as ProductTag }))}
+                        className={selectClass}
+                      >
+                        {productTags.map(tag => (
+                          <option key={tag} value={tag}>{tag}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </FormBlock>
+
+                <FormBlock title="Tamanhos disponíveis">
+                  <div className="flex flex-wrap gap-2">
+                    {commonSizes.map(size => {
+                      const isSelected = selectedSizes.some(selectedSize => normalizeComparable(selectedSize) === normalizeComparable(size));
+                      return (
+                        <button
+                          key={size}
+                          onClick={() => handleToggleSize(size)}
+                          className={`min-h-11 rounded-full border px-4 text-sm font-semibold transition-colors ${
+                            isSelected
+                              ? 'border-[#8B7355] bg-[#8B7355] text-white'
+                              : 'border-[#D8D0C4] bg-white text-[#3D3835] hover:border-[#8B7355]'
+                          }`}
+                          type="button"
+                        >
+                          {size}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {selectedSizes.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedSizes.map(size => (
+                        <button
+                          key={size}
+                          onClick={() => handleRemoveSize(size)}
+                          className="flex min-h-9 items-center gap-1 rounded-full bg-[#F5F1EC] px-3 text-xs font-bold uppercase tracking-[0.12em] text-[#3D3835] transition-colors hover:bg-[#E5E0D8]"
+                          type="button"
+                        >
+                          {size} <X size={12} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <input
+                      value={customSizeText}
+                      onChange={(event) => setCustomSizeText(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          handleAddCustomSize();
+                        }
+                      }}
+                      className={fieldClass}
+                      placeholder="Tamanho personalizado"
+                    />
                     <button
-                      onClick={handleAddColorImageRow}
-                      className="flex shrink-0 items-center gap-1 rounded-lg border border-[#D8D0C4] bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#3D3835] transition-colors hover:border-[#8B7355]"
+                      onClick={handleAddCustomSize}
+                      className="flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D8D0C4] bg-white px-4 text-xs font-bold uppercase tracking-[0.16em] text-[#3D3835] transition-colors hover:border-[#8B7355]"
                       type="button"
                     >
-                      <Plus size={13} /> Adicionar
+                      <Plus size={14} /> Adicionar
+                    </button>
+                  </div>
+                </FormBlock>
+
+                <FormBlock title="Variações de cor">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs leading-relaxed text-[#7A7067]">
+                      As cores da vitrine serão criadas a partir destas variações.
+                    </p>
+                    <button
+                      onClick={handleAddColorImageRow}
+                      className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#D8D0C4] bg-white px-4 text-xs font-bold uppercase tracking-[0.16em] text-[#3D3835] transition-colors hover:border-[#8B7355]"
+                      type="button"
+                    >
+                      <Plus size={14} /> Adicionar cor
                     </button>
                   </div>
 
                   {colorImageRows.length === 0 ? (
                     <p className="rounded-lg border border-dashed border-[#D8D0C4] px-3 py-4 text-center text-xs text-[#9B8F7E]">
-                      Nenhuma imagem específica por cor.
+                      Nenhuma variação de cor cadastrada.
                     </p>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {colorImageRows.map(row => (
-                        <div key={row.id} className="space-y-3 rounded-lg border border-[#E5E0D8] bg-white p-3">
-                          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                        <div key={row.id} className="space-y-3 border-t border-[#E5E0D8] pt-4 first:border-t-0 first:pt-0">
+                          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                             <label className="block space-y-1.5">
-                              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Cor</span>
+                              <span className={labelClass}>Nome da cor</span>
                               <input
                                 value={row.color}
                                 onChange={(event) => handleUpdateColorImageRow(row.id, { color: event.target.value })}
-                                className="w-full rounded-lg border border-[#D8D0C4] px-3 py-2 text-sm outline-none focus:border-[#8B7355]"
+                                className={fieldClass}
                                 placeholder="Vermelho"
                               />
                             </label>
 
                             <button
                               onClick={() => handleRemoveColorImageRow(row.id)}
-                              className="flex h-10 items-center justify-center gap-1 self-end rounded-lg border border-red-200 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-red-700 transition-colors hover:bg-red-50"
+                              className="flex min-h-12 items-center justify-center gap-2 self-end rounded-lg border border-red-200 px-4 text-xs font-bold uppercase tracking-[0.16em] text-red-700 transition-colors hover:bg-red-50"
                               type="button"
                             >
-                              <Trash2 size={13} /> Remover
+                              <Trash2 size={14} /> Remover
                             </button>
                           </div>
 
                           <label className="block space-y-1.5">
-                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#7A7067]">Imagem da cor</span>
-                            <span className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-3 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
-                              <Upload size={15} /> {row.file ? row.file.name : row.imageUrl ? 'Trocar imagem' : 'Enviar imagem'}
+                            <span className={labelClass}>Imagem da cor</span>
+                            <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-3 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
+                              <Upload size={15} /> {row.file ? row.file.name : row.imageUrl ? 'Trocar imagem da cor' : 'Enviar imagem da cor'}
                               <input
                                 type="file"
                                 accept="image/*"
@@ -640,16 +799,39 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                             </span>
                           </label>
 
-                          {row.imageUrl && !row.file && (
+                          {row.imageUrl && !row.file ? (
                             <div className="overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
                               <img src={row.imageUrl} alt={`Imagem da cor ${row.color || 'selecionada'}`} className="h-32 w-full object-cover" />
                             </div>
+                          ) : (
+                            <p className="text-xs text-[#9B8F7E]">Sem imagem própria, usa a imagem principal.</p>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
+                </FormBlock>
+
+                <FormBlock title="Descrição e detalhes">
+                  <label className="block space-y-1.5">
+                    <span className={labelClass}>Descrição</span>
+                    <textarea
+                      value={productForm.description}
+                      onChange={(event) => setProductForm(previous => ({ ...previous, description: event.target.value }))}
+                      className={`${fieldClass} min-h-28 resize-y`}
+                    />
+                  </label>
+
+                  <label className="block space-y-1.5">
+                    <span className={labelClass}>Descrição detalhada</span>
+                    <textarea
+                      value={productForm.details ?? ''}
+                      onChange={(event) => setProductForm(previous => ({ ...previous, details: event.target.value }))}
+                      className={`${fieldClass} min-h-28 resize-y`}
+                      placeholder="Opcional"
+                    />
+                  </label>
+                </FormBlock>
 
                 <button
                   type="submit"

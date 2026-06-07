@@ -62,8 +62,29 @@ function normalizeColorImages(value: unknown): Record<string, string> {
   }, {});
 }
 
+function uniqueTextValues(values: string[]) {
+  return values.reduce<string[]>((uniqueValues, value) => {
+    const trimmed = value.trim();
+    if (!trimmed) return uniqueValues;
+
+    const normalizedValue = trimmed
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    const alreadyExists = uniqueValues.some(existing => (
+      existing
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase() === normalizedValue
+    ));
+
+    return alreadyExists ? uniqueValues : [...uniqueValues, trimmed];
+  }, []);
+}
+
 function mapProduct(row: ProductRow, categoriesById: Map<string, Category>): Product {
   const category = row.category_id ? categoriesById.get(row.category_id) : undefined;
+  const colorImages = normalizeColorImages(row.color_images);
 
   return {
     id: row.id,
@@ -79,8 +100,8 @@ function mapProduct(row: ProductRow, categoriesById: Map<string, Category>): Pro
     imagePath: row.image_path,
     maxInstallments: Math.max(1, Number(row.max_installments ?? 1)),
     availableSizes: row.available_sizes ?? [],
-    availableColors: row.available_colors ?? [],
-    colorImages: normalizeColorImages(row.color_images),
+    availableColors: uniqueTextValues([...(row.available_colors ?? []), ...Object.keys(colorImages)]),
+    colorImages,
     sku: row.sku,
     details: row.details,
     isActive: row.is_active,
