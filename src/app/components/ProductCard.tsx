@@ -25,7 +25,7 @@ export function ProductCard({
   onToggleFavorite
 }: ProductCardProps) {
   const whatsappMessage = `Olá! Tenho interesse no produto: ${name} - R$ ${price.toFixed(2)}`;
-  const whatsappLink = `https://wa.me/5511999999999?text=${encodeURIComponent(whatsappMessage)}`;
+  const whatsappLink = `https://wa.me/5511930224490?text=${encodeURIComponent(whatsappMessage)}`;
 
   const handleImageClick = () => {
     window.open(whatsappLink, '_blank');
