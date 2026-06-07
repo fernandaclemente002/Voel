@@ -237,6 +237,17 @@ export async function saveProduct(input: ProductInput, productId?: string) {
   if (error) throw error;
 }
 
+export async function updateProductStock(productId: string, stockQuantity: number) {
+  const client = requireSupabase();
+  const safeStockQuantity = Math.max(0, Math.floor(Number(stockQuantity) || 0));
+  const { error } = await client
+    .from('products')
+    .update({ stock_quantity: safeStockQuantity })
+    .eq('id', productId);
+
+  if (error) throw error;
+}
+
 export async function deleteProduct(productId: string) {
   const client = requireSupabase();
   const { error } = await client.from('products').delete().eq('id', productId);

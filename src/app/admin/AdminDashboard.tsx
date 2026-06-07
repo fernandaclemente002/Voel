@@ -9,6 +9,7 @@ import {
   fetchAdminCatalog,
   saveCategory,
   saveProduct,
+  updateProductStock,
   uploadProductImage,
 } from '../services/catalogService';
 import type { Category, CategoryInput, Product, ProductInput, ProductTag } from '../types/catalog';
@@ -40,6 +41,7 @@ const emptyProductForm: ProductInput = {
 };
 
 const commonSizes = ['PP', 'P', 'M', 'G', 'GG', 'XG', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', 'Único'];
+const lowStockLimitStorageKey = 'voel:admin-low-stock-limit';
 const fieldClass = 'w-full rounded-lg border border-[#D8D0C4] px-3 py-3 text-base outline-none transition-colors focus:border-[#8B7355] sm:text-sm';
 const selectClass = `${fieldClass} bg-white`;
 const labelClass = 'text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]';
@@ -175,6 +177,13 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const [customSizeText, setCustomSizeText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [colorImageRows, setColorImageRows] = useState<ColorImageRow[]>([]);
+  const [lowStockLimitText, setLowStockLimitText] = useState(() => {
+    try {
+      return window.localStorage.getItem(lowStockLimitStorageKey) || '3';
+    } catch {
+      return '3';
+    }
+  });
 
   const loadCatalog = async () => {
     setIsLoading(true);
@@ -194,6 +203,14 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   useEffect(() => {
     loadCatalog();
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(lowStockLimitStorageKey, lowStockLimitText);
+    } catch {
+      // Local preference only; ignoring storage failure keeps the admin usable.
+    }
+  }, [lowStockLimitText]);
 
   const resetCategoryForm = () => {
     setCategoryForm(emptyCategoryForm);
@@ -439,6 +456,73 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setColorImageRows(previous => previous.filter(row => row.id !== rowId));
   };
 
+  const handleApplyStockChange = async (product: Product, delta: number, requiresConfirmation: boolean) => {
+    if (requiresConfirmation && !window.confirm('Confirmar baixa de estoque?')) return;
+
+    const nextStockQuantity = product.stockQuantity + delta;
+    if (nextStockQuantity < 0) {
+      setMessage('');
+      setError('Estoque insuficiente para essa baixa.');
+      return;
+    }
+
+    setIsSaving(true);
+    setMessage('');
+    setError('');
+
+    try {
+      await updateProductStock(product.id, nextStockQuantity);
+      setProducts(previous => previous.map(currentProduct => (
+        currentProduct.id === product.id
+          ? { ...currentProduct, stockQuantity: nextStockQuantity }
+          : currentProduct
+      )));
+
+      if (editingProductId === product.id) {
+        setStockText(String(nextStockQuantity));
+        setProductForm(previous => ({ ...previous, stockQuantity: nextStockQuantity }));
+      }
+
+      setMessage('Estoque atualizado.');
+    } catch {
+      setError('Não foi possível atualizar o estoque.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRegisterSale = (product: Product) => {
+    handleApplyStockChange(product, -1, true);
+  };
+
+  const handleDecreaseStock = (product: Product) => {
+    const quantityText = window.prompt('Quantidade para baixar do estoque:', '1');
+    if (quantityText === null) return;
+
+    const quantity = parseIntegerInput(quantityText, 1);
+    if (quantity === null) {
+      setMessage('');
+      setError('Informe uma quantidade válida para baixar.');
+      return;
+    }
+
+    handleApplyStockChange(product, -quantity, true);
+  };
+
+  const handleIncreaseStock = (product: Product) => {
+    const quantityText = window.prompt('Quantidade para adicionar ao estoque:', '1');
+    if (quantityText === null) return;
+
+    const quantity = parseIntegerInput(quantityText, 1);
+    if (quantity === null) {
+      setMessage('');
+      setError('Informe uma quantidade válida para adicionar.');
+      return;
+    }
+
+    handleApplyStockChange(product, quantity, false);
+  };
+
   const handleDeleteCategory = async (category: Category) => {
     if (!window.confirm(`Excluir a categoria "${category.name}"?`)) return;
 
@@ -475,6 +559,10 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   };
 
   const imagePreview = imageFile ? URL.createObjectURL(imageFile) : productForm.imageUrl;
+  const lowStockLimit = parseIntegerInput(lowStockLimitText, 0) ?? 0;
+  const lowStockProducts = products
+    .filter(product => product.stockQuantity <= lowStockLimit)
+    .sort((firstProduct, secondProduct) => firstProduct.stockQuantity - secondProduct.stockQuantity);
 
   return (
     <div className="min-h-screen bg-[#F7F5EF] text-[#2F2A27]">
@@ -853,6 +941,52 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                 <Package className="text-[#8B7355]" size={22} />
               </div>
 
+              <div className="border-b border-[#E5E0D8] bg-[#FDFCF7] p-5">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h3 className="font-serif text-sm uppercase tracking-[0.2em] text-[#3D3835]">Estoque baixo</h3>
+                    <p className="mt-1 text-xs text-[#7A7067]">Produtos com estoque no limite configurado.</p>
+                  </div>
+
+                  <label className="block w-full max-w-44 space-y-1.5">
+                    <span className={labelClass}>Limite</span>
+                    <input
+                      value={lowStockLimitText}
+                      onChange={(event) => setLowStockLimitText(event.target.value)}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className={fieldClass}
+                      placeholder="3"
+                    />
+                  </label>
+                </div>
+
+                {lowStockProducts.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-[#D8D0C4] bg-white px-3 py-4 text-center text-xs text-[#9B8F7E]">
+                    Nenhum produto no limite de estoque.
+                  </p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {lowStockProducts.map(product => (
+                      <button
+                        key={product.id}
+                        onClick={() => handleEditProduct(product)}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-[#E5E0D8] bg-white px-3 py-3 text-left transition-colors hover:border-[#8B7355]"
+                        type="button"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-[#3D3835]">{product.name}</span>
+                          <span className="mt-1 block text-[10px] uppercase tracking-[0.18em] text-[#9B8F7E]">{product.category}</span>
+                        </span>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${product.stockQuantity === 0 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {product.stockQuantity === 0 ? 'Esgotado' : `${product.stockQuantity} un.`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="divide-y divide-[#E5E0D8]">
                 {products.length === 0 ? (
                   <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-8 text-center text-[#7A7067]">
@@ -886,6 +1020,32 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                         <p className="text-xs uppercase tracking-[0.2em] text-[#9B8F7E]">
                           {product.category} · {formatPrice(product.price)} · até {product.maxInstallments}x · estoque {product.stockQuantity}
                         </p>
+                        <div className="grid gap-2 pt-2 sm:grid-cols-3">
+                          <button
+                            onClick={() => handleRegisterSale(product)}
+                            disabled={isSaving}
+                            className="min-h-10 rounded-lg border border-[#D8D0C4] bg-white px-3 py-2 text-[10px] font-bold uppercase leading-snug tracking-[0.12em] text-[#3D3835] transition-colors hover:border-[#8B7355] disabled:cursor-not-allowed disabled:opacity-60"
+                            type="button"
+                          >
+                            Registrar venda
+                          </button>
+                          <button
+                            onClick={() => handleDecreaseStock(product)}
+                            disabled={isSaving}
+                            className="min-h-10 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-bold uppercase leading-snug tracking-[0.12em] text-amber-800 transition-colors hover:border-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+                            type="button"
+                          >
+                            Baixar estoque por quantidade
+                          </button>
+                          <button
+                            onClick={() => handleIncreaseStock(product)}
+                            disabled={isSaving}
+                            className="min-h-10 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold uppercase leading-snug tracking-[0.12em] text-emerald-800 transition-colors hover:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                            type="button"
+                          >
+                            Adicionar estoque por quantidade
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex items-start gap-2 md:justify-end">

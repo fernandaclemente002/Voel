@@ -6,6 +6,7 @@ import type { Category, Product } from '../types/catalog';
 
 const favoriteStorageKey = 'voel:favorites';
 const whatsappNumber = '5511930224490';
+const publicLowStockLimit = 3;
 
 type MenuItem = {
   label: string;
@@ -60,6 +61,16 @@ function getColorImage(product: Product, selectedColor: string) {
 
 function getProductLink(product: Product) {
   return `${window.location.origin}${window.location.pathname}#produto-${product.id}`;
+}
+
+function isOutOfStock(product: Product) {
+  return product.stockQuantity <= 0;
+}
+
+function getStockNotice(product: Product) {
+  if (isOutOfStock(product)) return 'Esgotado';
+  if (product.stockQuantity <= publicLowStockLimit) return `Só ${product.stockQuantity} disponíveis!`;
+  return '';
 }
 
 interface HeaderProps {
@@ -381,6 +392,8 @@ function ProductDetailsModal({
 }: ProductDetailsModalProps) {
   const installmentText = getInstallmentText(product);
   const selectedImage = getColorImage(product, selectedColor) || product.imageUrl;
+  const stockNotice = getStockNotice(product);
+  const outOfStock = isOutOfStock(product);
   const [purchaseError, setPurchaseError] = useState('');
   const [isZooming, setIsZooming] = useState(false);
   const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
@@ -412,12 +425,12 @@ function ProductDetailsModal({
   };
 
   const handleBuyClick = () => {
-    if (product.availableSizes.length > 0 && !selectedSize) {
+    if (!outOfStock && product.availableSizes.length > 0 && !selectedSize) {
       setPurchaseError('Selecione um tamanho para continuar.');
       return;
     }
 
-    if (product.availableColors.length > 0 && !selectedColor) {
+    if (!outOfStock && product.availableColors.length > 0 && !selectedColor) {
       setPurchaseError('Selecione uma cor para continuar.');
       return;
     }
@@ -491,6 +504,9 @@ function ProductDetailsModal({
               {installmentText && (
                 <p className="text-sm text-[#8B7355]">{installmentText}</p>
               )}
+              {stockNotice && (
+                <p className={`text-sm font-semibold ${outOfStock ? 'text-red-700' : 'text-amber-700'}`}>{stockNotice}</p>
+              )}
             </div>
 
             {product.availableColors.length > 0 && (
@@ -563,7 +579,7 @@ function ProductDetailsModal({
                 className="flex items-center justify-center gap-2 rounded-lg bg-[#8B7355] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-white shadow-lg transition-colors hover:bg-[#6D5A42]"
                 type="button"
               >
-                <MessageCircle size={16} /> Comprar pelo WhatsApp
+                <MessageCircle size={16} /> {outOfStock ? 'Consultar reposição pelo WhatsApp' : 'Comprar pelo WhatsApp'}
               </button>
 
               <button
@@ -708,16 +724,18 @@ export default function PublicCatalog() {
   };
 
   const handleBuyNow = (product: Product, options?: { size?: string; color?: string }) => {
+    const outOfStock = isOutOfStock(product);
     const message = [
-      'Olá! Tenho interesse no produto:',
+      outOfStock ? 'Olá! Gostaria de consultar reposição do produto:' : 'Olá! Tenho interesse no produto:',
       `Produto: ${product.name}`,
       `Preço: ${formatCurrency(product.price)}`,
       product.category ? `Categoria: ${product.category}` : '',
       product.sku ? `SKU: ${product.sku}` : '',
+      outOfStock ? 'Estoque: Esgotado' : '',
       options?.color ? `Cor: ${options.color}` : '',
       options?.size ? `Tamanho: ${options.size}` : '',
       `Link: ${getProductLink(product)}`,
-      'Poderia me passar mais informações?',
+      outOfStock ? 'Poderia me avisar sobre disponibilidade?' : 'Poderia me passar mais informações?',
     ].filter(Boolean).join('\n');
 
     window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`, '_blank');
@@ -883,7 +901,7 @@ export default function PublicCatalog() {
                               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#8B7355] py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-white shadow-lg transition-colors hover:bg-[#6D5A42]"
                               type="button"
                             >
-                              <MessageCircle size={14} /> Comprar agora
+                              <MessageCircle size={14} /> {isOutOfStock(product) ? 'Consultar reposição' : 'Comprar agora'}
                             </button>
                           </div>
 
@@ -901,6 +919,11 @@ export default function PublicCatalog() {
                           <p className="pt-1 text-xs font-semibold tracking-widest text-[#3D3835]">{formatCurrency(product.price)}</p>
                           {product.maxInstallments > 1 && (
                             <p className="text-[10px] tracking-wide text-[#8B7355]">{getInstallmentText(product)}</p>
+                          )}
+                          {getStockNotice(product) && (
+                            <p className={`text-[10px] font-semibold tracking-wide ${isOutOfStock(product) ? 'text-red-700' : 'text-amber-700'}`}>
+                              {getStockNotice(product)}
+                            </p>
                           )}
                         </div>
                       </div>
