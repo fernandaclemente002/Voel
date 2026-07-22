@@ -176,7 +176,7 @@ function Header({ onSearchChange, favoritesCount, onShowFavorites, onPageChange,
                     Favoritos
                   </button>
                   <button 
-                    onClick={() => { window.open('https://wa.me/5500000000000'); setIsMenuOpen(false); }}
+                    onClick={() => { window.open('https://wa.me/5511930224490'); setIsMenuOpen(false); }}
                     className="block text-sm uppercase tracking-[0.3em] w-full text-left text-[#3D3835] hover:text-[#8B7355] transition-all hover:translate-x-2"
                   >
                     Contato
@@ -234,13 +234,13 @@ export default function App() {
   const handleBuyNow = (productName) => {
     const text = `Olá! Gostaria de saber mais sobre o produto: ${productName}`;
     const encodedText = encodeURIComponent(text);
-    window.open(`https://wa.me/5500000000000?text=${encodedText}`, '_blank');
+    window.open(`https://wa.me/5511930224490?text=${encodedText}`, '_blank');
   };
 
   const handleWhatsAppChat = () => {
     const text = `Olá! Preciso de atendimento.`;
     const encodedText = encodeURIComponent(text);
-    window.open(`https://wa.me/5500000000000?text=${encodedText}`, '_blank');
+    window.open(`https://wa.me/5511930224490?text=${encodedText}`, '_blank');
   };
 
   const filteredProducts = useMemo(() => {
