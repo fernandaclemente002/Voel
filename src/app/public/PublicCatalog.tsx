@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { MouseEvent } from 'react';
+import type { ChangeEvent, MouseEvent } from 'react';
 import { ArrowRight, Check, Heart, Instagram, Mail, Menu, MessageCircle, Search, Truck, X, Zap } from 'lucide-react';
 import { fetchPublicCatalog } from '../services/catalogService';
 import type { Category, Product } from '../types/catalog';
@@ -11,6 +11,17 @@ const publicLowStockLimit = 3;
 type MenuItem = {
   label: string;
   value: string;
+};
+
+type PaymentMode = 'cash' | 'installments';
+
+type PurchaseOptions = {
+  size?: string;
+  color?: string;
+  quantity?: number;
+  cep?: string;
+  paymentMode?: PaymentMode;
+  installments?: number;
 };
 
 function ImageWithFallback({ src, alt, className }: { src: string; alt: string; className?: string }) {
@@ -42,6 +53,12 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'BRL',
   }).format(value);
+}
+
+function formatCepInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
 function getInstallmentText(product: Product) {
@@ -376,7 +393,7 @@ interface ProductDetailsModalProps {
   onSizeChange: (size: string) => void;
   onColorChange: (color: string) => void;
   onToggleFavorite: (id: string) => void;
-  onBuy: (product: Product, options?: { size?: string; color?: string }) => void;
+  onBuy: (product: Product, options?: PurchaseOptions) => void;
 }
 
 function ProductDetailsModal({
@@ -394,17 +411,42 @@ function ProductDetailsModal({
   const selectedImage = getColorImage(product, selectedColor) || product.imageUrl;
   const stockNotice = getStockNotice(product);
   const outOfStock = isOutOfStock(product);
+  const maxQuantity = outOfStock ? 1 : Math.max(1, Math.floor(Number(product.stockQuantity) || 1));
+  const maxInstallments = Math.max(1, Math.floor(Number(product.maxInstallments) || 1));
+  const canChooseInstallments = !outOfStock && maxInstallments > 1;
   const [purchaseError, setPurchaseError] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [shippingCep, setShippingCep] = useState('');
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
+  const [selectedInstallments, setSelectedInstallments] = useState(2);
   const [isZooming, setIsZooming] = useState(false);
   const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const selectedInstallmentCount = Math.min(Math.max(2, selectedInstallments), Math.max(2, maxInstallments));
+  const subtotal = product.price * quantity;
+  const installmentValue = subtotal / selectedInstallmentCount;
+
+  useEffect(() => {
+    setPurchaseError('');
+    setQuantity(1);
+    setShippingCep('');
+    setPaymentMode('cash');
+    setSelectedInstallments(2);
+    setIsZooming(false);
+    setIsLightboxOpen(false);
+    setZoomPosition({ x: 50, y: 50 });
+  }, [product.id]);
+
+  useEffect(() => {
+    setQuantity(previous => Math.min(Math.max(1, previous), maxQuantity));
+  }, [maxQuantity]);
 
   useEffect(() => {
     setPurchaseError('');
     setIsZooming(false);
     setIsLightboxOpen(false);
     setZoomPosition({ x: 50, y: 50 });
-  }, [product.id, selectedColor, selectedSize]);
+  }, [selectedColor, selectedSize]);
 
   const handleImageMouseMove = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -424,6 +466,20 @@ function ProductDetailsModal({
     onSizeChange(selectedSize === size ? '' : size);
   };
 
+  const handleQuantityChange = (nextQuantity: number) => {
+    setPurchaseError('');
+    setQuantity(Math.min(maxQuantity, Math.max(1, nextQuantity)));
+  };
+
+  const handleCepChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setShippingCep(formatCepInput(event.target.value));
+  };
+
+  const handlePaymentModeChange = (nextPaymentMode: PaymentMode) => {
+    setPurchaseError('');
+    setPaymentMode(nextPaymentMode);
+  };
+
   const handleBuyClick = () => {
     if (!outOfStock && product.availableSizes.length > 0 && !selectedSize) {
       setPurchaseError('Selecione um tamanho para continuar.');
@@ -436,7 +492,14 @@ function ProductDetailsModal({
     }
 
     setPurchaseError('');
-    onBuy(product, { size: selectedSize, color: selectedColor });
+    onBuy(product, {
+      size: selectedSize,
+      color: selectedColor,
+      quantity,
+      cep: shippingCep.trim(),
+      paymentMode: canChooseInstallments && paymentMode === 'installments' ? 'installments' : 'cash',
+      installments: canChooseInstallments && paymentMode === 'installments' ? selectedInstallmentCount : undefined,
+    });
   };
 
   return (
@@ -549,6 +612,107 @@ function ProductDetailsModal({
                       {size}
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {!outOfStock && (
+              <div className="mb-7 space-y-6 border-y border-[#E5E0D8] py-6">
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#7A7067]">Quantidade</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8B7355]">Subtotal {formatCurrency(subtotal)}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleQuantityChange(quantity - 1)}
+                      disabled={quantity <= 1}
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D8D0C4] bg-white text-lg font-light text-[#3D3835] transition-colors hover:border-[#8B7355] disabled:cursor-not-allowed disabled:opacity-40"
+                      type="button"
+                      aria-label="Diminuir quantidade"
+                    >
+                      -
+                    </button>
+                    <span className="flex h-11 min-w-16 items-center justify-center border-y border-[#E5E0D8] px-4 text-sm font-semibold tracking-[0.2em] text-[#3D3835]">
+                      {quantity}
+                    </span>
+                    <button
+                      onClick={() => handleQuantityChange(quantity + 1)}
+                      disabled={quantity >= maxQuantity}
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D8D0C4] bg-white text-lg font-light text-[#3D3835] transition-colors hover:border-[#8B7355] disabled:cursor-not-allowed disabled:opacity-40"
+                      type="button"
+                      aria-label="Aumentar quantidade"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-[10px] font-bold uppercase tracking-[0.3em] text-[#7A7067]" htmlFor={`shipping-cep-${product.id}`}>
+                    CEP para cálculo do frete
+                  </label>
+                  <input
+                    id={`shipping-cep-${product.id}`}
+                    value={shippingCep}
+                    onChange={handleCepChange}
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                    maxLength={9}
+                    placeholder="00000-000"
+                    className="h-12 w-full rounded-lg border border-[#D8D0C4] bg-white px-4 text-sm tracking-[0.18em] text-[#3D3835] outline-none transition-colors placeholder:text-[#C7BFB5] focus:border-[#8B7355]"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#7A7067]">Forma de pagamento</p>
+                  <div className={`grid gap-2 ${canChooseInstallments ? 'sm:grid-cols-2' : ''}`}>
+                    <button
+                      onClick={() => handlePaymentModeChange('cash')}
+                      className={`flex items-center justify-between rounded-lg border px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-colors ${
+                        paymentMode === 'cash'
+                          ? 'border-[#8B7355] bg-[#8B7355] text-white'
+                          : 'border-[#D8D0C4] bg-white text-[#3D3835] hover:border-[#8B7355]'
+                      }`}
+                      type="button"
+                    >
+                      À vista
+                      {paymentMode === 'cash' && <Check size={15} />}
+                    </button>
+
+                    {canChooseInstallments && (
+                      <button
+                        onClick={() => handlePaymentModeChange('installments')}
+                        className={`flex items-center justify-between rounded-lg border px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] transition-colors ${
+                          paymentMode === 'installments'
+                            ? 'border-[#8B7355] bg-[#8B7355] text-white'
+                            : 'border-[#D8D0C4] bg-white text-[#3D3835] hover:border-[#8B7355]'
+                        }`}
+                        type="button"
+                      >
+                        Parcelado
+                        {paymentMode === 'installments' && <Check size={15} />}
+                      </button>
+                    )}
+                  </div>
+
+                  {canChooseInstallments && paymentMode === 'installments' && (
+                    <div className="grid gap-3 sm:grid-cols-[140px_1fr] sm:items-center">
+                      <select
+                        value={selectedInstallmentCount}
+                        onChange={(event) => setSelectedInstallments(Number(event.target.value))}
+                        className="h-12 rounded-lg border border-[#D8D0C4] bg-white px-4 text-sm font-semibold tracking-[0.12em] text-[#3D3835] outline-none transition-colors focus:border-[#8B7355]"
+                        aria-label="Quantidade de parcelas"
+                      >
+                        {Array.from({ length: maxInstallments - 1 }, (_, index) => index + 2).map(installmentCount => (
+                          <option key={installmentCount} value={installmentCount}>{installmentCount}x</option>
+                        ))}
+                      </select>
+                      <p className="text-xs leading-relaxed tracking-wide text-[#8B7355]">
+                        aprox. {formatCurrency(installmentValue)} por parcela
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -723,19 +887,39 @@ export default function PublicCatalog() {
     setSelectedColor('');
   };
 
-  const handleBuyNow = (product: Product, options?: { size?: string; color?: string }) => {
+  const handleBuyNow = (product: Product, options?: PurchaseOptions) => {
     const outOfStock = isOutOfStock(product);
+    const quantity = outOfStock ? 1 : Math.max(1, Math.floor(Number(options?.quantity) || 1));
+    const subtotal = product.price * quantity;
+    const maxInstallments = Math.max(1, Math.floor(Number(product.maxInstallments) || 1));
+    const isInstallmentPayment = !outOfStock && options?.paymentMode === 'installments' && maxInstallments > 1;
+    const installmentCount = isInstallmentPayment
+      ? Math.min(Math.max(2, Math.floor(Number(options?.installments) || 2)), maxInstallments)
+      : undefined;
+    const paymentDescription = isInstallmentPayment && installmentCount
+      ? `Parcelado em ${installmentCount}x de aproximadamente ${formatCurrency(subtotal / installmentCount)}`
+      : 'À vista';
+    const finalMessage = outOfStock
+      ? 'Poderia me avisar sobre disponibilidade?'
+      : isInstallmentPayment
+        ? 'Pode gerar o link de crédito para pagamento?'
+        : 'Pode me passar o PIX para pagamento?';
+
     const message = [
       outOfStock ? 'Olá! Gostaria de consultar reposição do produto:' : 'Olá! Tenho interesse no produto:',
       `Produto: ${product.name}`,
-      `Preço: ${formatCurrency(product.price)}`,
+      `Preço unitário: ${formatCurrency(product.price)}`,
+      `Quantidade: ${quantity}`,
+      `Subtotal: ${formatCurrency(subtotal)}`,
       product.category ? `Categoria: ${product.category}` : '',
+      options?.color ? `Cor selecionada: ${options.color}` : '',
+      options?.size ? `Tamanho selecionado: ${options.size}` : '',
       product.sku ? `SKU: ${product.sku}` : '',
-      outOfStock ? 'Estoque: Esgotado' : '',
-      options?.color ? `Cor: ${options.color}` : '',
-      options?.size ? `Tamanho: ${options.size}` : '',
+      !outOfStock ? `Forma de pagamento desejada: ${paymentDescription}` : '',
+      options?.cep ? `CEP: ${options.cep}` : '',
       `Link: ${getProductLink(product)}`,
-      outOfStock ? 'Poderia me avisar sobre disponibilidade?' : 'Poderia me passar mais informações?',
+      outOfStock ? 'Estoque: Esgotado' : '',
+      finalMessage,
     ].filter(Boolean).join('\n');
 
     window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`, '_blank');
