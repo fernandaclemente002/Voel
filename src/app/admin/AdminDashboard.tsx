@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Edit3, ImagePlus, Loader2, LogOut, Package, Plus, RefreshCw, Save, Tags, Trash2, Upload, X } from 'lucide-react';
@@ -12,7 +12,7 @@ import {
   updateProductStock,
   uploadProductImage,
 } from '../services/catalogService';
-import type { Category, CategoryInput, Product, ProductInput, ProductTag } from '../types/catalog';
+import type { Category, CategoryInput, Product, ProductColorImages, ProductInput, ProductTag } from '../types/catalog';
 import { productTags } from '../types/catalog';
 
 const emptyCategoryForm: CategoryInput = {
@@ -46,11 +46,17 @@ const fieldClass = 'w-full rounded-lg border border-[#D8D0C4] px-3 py-3 text-bas
 const selectClass = `${fieldClass} bg-white`;
 const labelClass = 'text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7067]';
 
+type ColorImageItem = {
+  id: string;
+  imageUrl: string;
+  file: File | null;
+  previewUrl: string;
+};
+
 type ColorImageRow = {
   id: string;
   color: string;
-  imageUrl: string;
-  file: File | null;
+  images: ColorImageItem[];
 };
 
 function slugify(value: string) {
@@ -117,22 +123,48 @@ function uniqueTextValues(values: string[]) {
   }, []);
 }
 
-function createColorImageRow(color = '', imageUrl = ''): ColorImageRow {
-  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+function createId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
+}
 
+function createColorImageItem(imageUrl = '', file: File | null = null): ColorImageItem {
   return {
-    id,
-    color,
+    id: createId(),
     imageUrl,
-    file: null,
+    file,
+    previewUrl: file && typeof URL !== 'undefined' ? URL.createObjectURL(file) : imageUrl,
   };
 }
 
-function findColorImage(colorImages: Record<string, string>, color: string) {
+function createColorImageRow(color = '', imageUrls: string[] = []): ColorImageRow {
+  return {
+    id: createId(),
+    color,
+    images: imageUrls.map(imageUrl => createColorImageItem(imageUrl)),
+  };
+}
+
+function getColorImageUrls(imageValue: ProductColorImages[string] | undefined) {
+  if (typeof imageValue === 'string') {
+    const imageUrl = imageValue.trim();
+    return imageUrl ? [imageUrl] : [];
+  }
+
+  if (!Array.isArray(imageValue)) return [];
+
+  return imageValue.reduce<string[]>((imageUrls, item) => {
+    const imageUrl = item.trim();
+    if (!imageUrl || imageUrls.includes(imageUrl)) return imageUrls;
+    return [...imageUrls, imageUrl];
+  }, []);
+}
+
+function findColorImageUrls(colorImages: ProductColorImages, color: string) {
   const normalizedColor = normalizeComparable(color);
-  return Object.entries(colorImages).find(([imageColor]) => normalizeComparable(imageColor) === normalizedColor)?.[1] ?? '';
+  const matchedImageValue = Object.entries(colorImages).find(([imageColor]) => normalizeComparable(imageColor) === normalizedColor)?.[1];
+  return getColorImageUrls(matchedImageValue);
 }
 
 function productColorRows(product: Product) {
@@ -141,7 +173,26 @@ function productColorRows(product: Product) {
     ...Object.keys(product.colorImages),
   ]);
 
-  return colors.map(color => createColorImageRow(color, findColorImage(product.colorImages, color)));
+  return colors.map(color => createColorImageRow(color, findColorImageUrls(product.colorImages, color)));
+}
+
+function getFirstColorImageUrl(colorImages: ProductColorImages) {
+  for (const imageValue of Object.values(colorImages)) {
+    const imageUrls = getColorImageUrls(imageValue);
+    if (imageUrls.length > 0) return imageUrls[0];
+  }
+
+  return '';
+}
+
+function revokeColorImageItem(image: ColorImageItem) {
+  if (image.file && image.previewUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(image.previewUrl);
+  }
+}
+
+function revokeColorImageRows(rows: ColorImageRow[]) {
+  rows.forEach(row => row.images.forEach(revokeColorImageItem));
 }
 
 function FormBlock({ title, children }: { title: string; children: ReactNode }) {
@@ -177,6 +228,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const [customSizeText, setCustomSizeText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [colorImageRows, setColorImageRows] = useState<ColorImageRow[]>([]);
+  const colorImageRowsRef = useRef<ColorImageRow[]>([]);
   const [lowStockLimitText, setLowStockLimitText] = useState(() => {
     try {
       return window.localStorage.getItem(lowStockLimitStorageKey) || '3';
@@ -212,6 +264,12 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     }
   }, [lowStockLimitText]);
 
+  useEffect(() => {
+    colorImageRowsRef.current = colorImageRows;
+  }, [colorImageRows]);
+
+  useEffect(() => () => revokeColorImageRows(colorImageRowsRef.current), []);
+
   const resetCategoryForm = () => {
     setCategoryForm(emptyCategoryForm);
     setEditingCategoryId(null);
@@ -226,6 +284,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setSelectedSizes([]);
     setCustomSizeText('');
     setImageFile(null);
+    revokeColorImageRows(colorImageRowsRef.current);
     setColorImageRows([]);
   };
 
@@ -322,12 +381,12 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
         imagePath = uploadedImage.imagePath;
       }
 
-      const colorImages: Record<string, string> = {};
+      const colorImages: ProductColorImages = {};
       const availableColors: string[] = [];
 
       for (const row of colorImageRows) {
         const color = row.color.trim();
-        const rowHasImage = Boolean(row.file || row.imageUrl.trim());
+        const rowHasImage = row.images.length > 0;
 
         if (!color && rowHasImage) {
           throw new Error('color-name-required');
@@ -335,24 +394,43 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
 
         if (!color) continue;
 
-        if (!availableColors.some(existingColor => normalizeComparable(existingColor) === normalizeComparable(color))) {
+        const existingColor = availableColors.find(currentColor => normalizeComparable(currentColor) === normalizeComparable(color));
+        const colorKey = existingColor ?? color;
+
+        if (!existingColor) {
           availableColors.push(color);
         }
 
-        let colorImageUrl = row.imageUrl.trim();
+        const rowImageUrls: string[] = [];
 
-        if (row.file) {
-          const uploadedImage = await uploadProductImage(row.file);
-          colorImageUrl = uploadedImage.imageUrl;
+        for (const image of row.images) {
+          let colorImageUrl = image.imageUrl.trim();
+
+          if (image.file) {
+            const uploadedImage = await uploadProductImage(image.file);
+            colorImageUrl = uploadedImage.imageUrl;
+          }
+
+          if (colorImageUrl && !rowImageUrls.includes(colorImageUrl)) {
+            rowImageUrls.push(colorImageUrl);
+          }
         }
 
-        if (colorImageUrl) {
-          colorImages[color] = colorImageUrl;
+        if (rowImageUrls.length > 0) {
+          const mergedImageUrls = [...getColorImageUrls(colorImages[colorKey])];
+
+          rowImageUrls.forEach(colorImageUrl => {
+            if (!mergedImageUrls.includes(colorImageUrl)) {
+              mergedImageUrls.push(colorImageUrl);
+            }
+          });
+
+          colorImages[colorKey] = mergedImageUrls.length === 1 ? mergedImageUrls[0] : mergedImageUrls;
         }
       }
 
       if (!imageUrl) {
-        imageUrl = Object.values(colorImages)[0] ?? '';
+        imageUrl = getFirstColorImageUrl(colorImages);
       }
 
       if (!imageUrl) {
@@ -440,6 +518,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setSelectedSizes(uniqueTextValues(product.availableSizes));
     setCustomSizeText('');
     setImageFile(null);
+    revokeColorImageRows(colorImageRowsRef.current);
     setColorImageRows(productColorRows(product));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -448,11 +527,44 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setColorImageRows(previous => [...previous, createColorImageRow()]);
   };
 
-  const handleUpdateColorImageRow = (rowId: string, changes: Partial<ColorImageRow>) => {
+  const handleUpdateColorImageRow = (rowId: string, changes: Partial<Pick<ColorImageRow, 'color'>>) => {
     setColorImageRows(previous => previous.map(row => row.id === rowId ? { ...row, ...changes } : row));
   };
 
+  const handleAddColorImages = (rowId: string, files: FileList | null) => {
+    const selectedFiles = Array.from(files ?? []);
+    if (selectedFiles.length === 0) return;
+
+    const nextImages = selectedFiles.map(file => createColorImageItem('', file));
+    setColorImageRows(previous => previous.map(row => (
+      row.id === rowId
+        ? { ...row, images: [...row.images, ...nextImages] }
+        : row
+    )));
+  };
+
+  const handleRemoveColorImage = (rowId: string, imageId: string) => {
+    const imageToRemove = colorImageRows
+      .find(row => row.id === rowId)
+      ?.images.find(image => image.id === imageId);
+
+    if (imageToRemove) {
+      revokeColorImageItem(imageToRemove);
+    }
+
+    setColorImageRows(previous => previous.map(row => (
+      row.id === rowId
+        ? { ...row, images: row.images.filter(image => image.id !== imageId) }
+        : row
+    )));
+  };
+
   const handleRemoveColorImageRow = (rowId: string) => {
+    const rowToRemove = colorImageRows.find(row => row.id === rowId);
+    if (rowToRemove) {
+      revokeColorImageRows([rowToRemove]);
+    }
+
     setColorImageRows(previous => previous.filter(row => row.id !== rowId));
   };
 
@@ -874,26 +986,55 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                             </button>
                           </div>
 
-                          <label className="block space-y-1.5">
-                            <span className={labelClass}>Imagem da cor</span>
-                            <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-3 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
-                              <Upload size={15} /> {row.file ? row.file.name : row.imageUrl ? 'Trocar imagem da cor' : 'Enviar imagem da cor'}
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(event) => handleUpdateColorImageRow(row.id, { file: event.target.files?.[0] ?? null })}
-                              />
-                            </span>
-                          </label>
+                          <div className="space-y-3">
+                            <label className="block space-y-1.5">
+                              <span className={labelClass}>Imagens da cor</span>
+                              <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-3 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
+                                <Upload size={15} /> {row.images.length > 0 ? 'Adicionar mais imagens' : 'Adicionar imagens'}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    handleAddColorImages(row.id, event.target.files);
+                                    event.currentTarget.value = '';
+                                  }}
+                                />
+                              </span>
+                            </label>
 
-                          {row.imageUrl && !row.file ? (
-                            <div className="overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
-                              <img src={row.imageUrl} alt={`Imagem da cor ${row.color || 'selecionada'}`} className="h-32 w-full object-cover" />
-                            </div>
-                          ) : (
-                            <p className="text-xs text-[#9B8F7E]">Sem imagem própria, usa a imagem principal.</p>
-                          )}
+                            {row.images.length > 0 ? (
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {row.images.map((image, imageIndex) => (
+                                  <div key={image.id} className="group relative overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
+                                    <img
+                                      src={image.previewUrl}
+                                      alt={`${row.color || 'Cor'} ${imageIndex + 1}`}
+                                      className="aspect-square w-full object-cover"
+                                    />
+                                    <button
+                                      onClick={() => handleRemoveColorImage(row.id, image.id)}
+                                      className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-700"
+                                      type="button"
+                                      aria-label="Remover imagem"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                    {image.file && (
+                                      <div className="absolute inset-x-0 bottom-0 bg-[#1F1B18]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                                        Nova
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="rounded-lg border border-dashed border-[#D8D0C4] px-3 py-3 text-xs text-[#9B8F7E]">
+                                Sem imagem própria, usa a imagem principal.
+                              </p>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ChangeEvent, MouseEvent } from 'react';
-import { ArrowRight, Check, Heart, Instagram, Mail, Menu, MessageCircle, Search, Truck, X, Zap } from 'lucide-react';
+import type { CSSProperties, ChangeEvent, MouseEvent } from 'react';
+import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, Instagram, Mail, Menu, MessageCircle, Search, Truck, X, Zap } from 'lucide-react';
 import { fetchPublicCatalog } from '../services/catalogService';
 import type { Category, Product } from '../types/catalog';
 
 const favoriteStorageKey = 'voel:favorites';
 const whatsappNumber = '5511930224490';
 const publicLowStockLimit = 3;
+const productZoomScale = 1.85;
 
 type MenuItem = {
   label: string;
@@ -24,7 +25,7 @@ type PurchaseOptions = {
   installments?: number;
 };
 
-function ImageWithFallback({ src, alt, className }: { src: string; alt: string; className?: string }) {
+function ImageWithFallback({ src, alt, className, style }: { src: string; alt: string; className?: string; style?: CSSProperties }) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ function ImageWithFallback({ src, alt, className }: { src: string; alt: string; 
       src={error || !src ? 'https://images.unsplash.com/photo-1594434292286-a29272892b00?q=80&w=800' : src}
       alt={alt}
       className={className}
+      style={style}
       onError={() => setError(true)}
     />
   );
@@ -66,14 +68,50 @@ function getInstallmentText(product: Product) {
   return `ou ${product.maxInstallments}x de ${formatCurrency(product.price / product.maxInstallments)}`;
 }
 
-function getColorImage(product: Product, selectedColor: string) {
-  if (!selectedColor) return '';
+function getImageUrls(imageValue: Product['colorImages'][string] | undefined) {
+  if (typeof imageValue === 'string') {
+    const imageUrl = imageValue.trim();
+    return imageUrl ? [imageUrl] : [];
+  }
 
-  const directImage = product.colorImages[selectedColor];
-  if (directImage) return directImage;
+  if (!Array.isArray(imageValue)) return [];
+
+  return imageValue.reduce<string[]>((imageUrls, item) => {
+    const imageUrl = item.trim();
+    if (!imageUrl || imageUrls.includes(imageUrl)) return imageUrls;
+    return [...imageUrls, imageUrl];
+  }, []);
+}
+
+function getColorImages(product: Product, selectedColor: string) {
+  if (!selectedColor) return [];
+
+  const directImages = getImageUrls(product.colorImages[selectedColor]);
+  if (directImages.length > 0) return directImages;
 
   const normalizedSelectedColor = normalizeText(selectedColor);
-  return Object.entries(product.colorImages).find(([color]) => normalizeText(color) === normalizedSelectedColor)?.[1] ?? '';
+  const matchedImageValue = Object.entries(product.colorImages).find(([color]) => normalizeText(color) === normalizedSelectedColor)?.[1];
+  return getImageUrls(matchedImageValue);
+}
+
+function getFirstAvailableColorImages(product: Product) {
+  for (const imageValue of Object.values(product.colorImages)) {
+    const imageUrls = getImageUrls(imageValue);
+    if (imageUrls.length > 0) return imageUrls;
+  }
+
+  return [];
+}
+
+function getProductGalleryImages(product: Product, selectedColor: string) {
+  if (selectedColor) {
+    const colorImages = getColorImages(product, selectedColor);
+    if (colorImages.length > 0) return colorImages;
+    return product.imageUrl ? [product.imageUrl] : [];
+  }
+
+  if (product.imageUrl) return [product.imageUrl];
+  return getFirstAvailableColorImages(product);
 }
 
 function getProductLink(product: Product) {
@@ -408,7 +446,8 @@ function ProductDetailsModal({
   onBuy,
 }: ProductDetailsModalProps) {
   const installmentText = getInstallmentText(product);
-  const selectedImage = getColorImage(product, selectedColor) || product.imageUrl;
+  const galleryImages = useMemo(() => getProductGalleryImages(product, selectedColor), [product, selectedColor]);
+  const hasMultipleImages = galleryImages.length > 1;
   const stockNotice = getStockNotice(product);
   const outOfStock = isOutOfStock(product);
   const maxQuantity = outOfStock ? 1 : Math.max(1, Math.floor(Number(product.stockQuantity) || 1));
@@ -419,12 +458,14 @@ function ProductDetailsModal({
   const [shippingCep, setShippingCep] = useState('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [selectedInstallments, setSelectedInstallments] = useState(2);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isZooming, setIsZooming] = useState(false);
   const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const selectedInstallmentCount = Math.min(Math.max(2, selectedInstallments), Math.max(2, maxInstallments));
   const subtotal = product.price * quantity;
   const installmentValue = subtotal / selectedInstallmentCount;
+  const selectedImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? '';
 
   useEffect(() => {
     setPurchaseError('');
@@ -432,9 +473,10 @@ function ProductDetailsModal({
     setShippingCep('');
     setPaymentMode('cash');
     setSelectedInstallments(2);
+    setActiveImageIndex(0);
     setIsZooming(false);
-    setIsLightboxOpen(false);
     setZoomPosition({ x: 50, y: 50 });
+    setIsLightboxOpen(false);
   }, [product.id]);
 
   useEffect(() => {
@@ -442,19 +484,27 @@ function ProductDetailsModal({
   }, [maxQuantity]);
 
   useEffect(() => {
+    setActiveImageIndex(0);
     setPurchaseError('');
     setIsZooming(false);
-    setIsLightboxOpen(false);
     setZoomPosition({ x: 50, y: 50 });
-  }, [selectedColor, selectedSize]);
+    setIsLightboxOpen(false);
+  }, [selectedColor]);
 
-  const handleImageMouseMove = (event: MouseEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    setZoomPosition({
-      x: ((event.clientX - rect.left) / rect.width) * 100,
-      y: ((event.clientY - rect.top) / rect.height) * 100,
-    });
-  };
+  useEffect(() => {
+    setPurchaseError('');
+  }, [selectedSize]);
+
+  useEffect(() => {
+    if (activeImageIndex >= galleryImages.length) {
+      setActiveImageIndex(0);
+    }
+  }, [activeImageIndex, galleryImages.length]);
+
+  useEffect(() => {
+    setIsZooming(false);
+    setZoomPosition({ x: 50, y: 50 });
+  }, [selectedImage]);
 
   const handleColorSelect = (color: string) => {
     setPurchaseError('');
@@ -478,6 +528,38 @@ function ProductDetailsModal({
   const handlePaymentModeChange = (nextPaymentMode: PaymentMode) => {
     setPurchaseError('');
     setPaymentMode(nextPaymentMode);
+  };
+
+  const canUseHoverZoom = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  const handleZoomEnter = () => {
+    if (canUseHoverZoom()) {
+      setIsZooming(true);
+    }
+  };
+
+  const handleZoomMove = (event: MouseEvent<HTMLButtonElement>) => {
+    if (!canUseHoverZoom()) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    setZoomPosition({
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
+    });
+  };
+
+  const handleZoomLeave = () => {
+    setIsZooming(false);
+  };
+
+  const handlePreviousImage = () => {
+    if (!hasMultipleImages) return;
+    setActiveImageIndex(previous => previous === 0 ? galleryImages.length - 1 : previous - 1);
+  };
+
+  const handleNextImage = () => {
+    if (!hasMultipleImages) return;
+    setActiveImageIndex(previous => previous === galleryImages.length - 1 ? 0 : previous + 1);
   };
 
   const handleBuyClick = () => {
@@ -506,43 +588,100 @@ function ProductDetailsModal({
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 px-0 backdrop-blur-sm sm:items-center sm:px-4">
       <button className="absolute inset-0 cursor-default" onClick={onClose} type="button" aria-label="Fechar detalhe" />
 
-      <section className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-lg bg-[#FDFCF7] shadow-2xl sm:max-w-5xl sm:rounded-lg">
+      <section className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-lg bg-[#FDFCF7] shadow-2xl sm:max-w-5xl sm:rounded-lg">
         <div className="grid gap-0 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)]">
-          <div className="relative bg-[#F5F1EC]">
-            <button
-              onClick={() => setIsLightboxOpen(true)}
-              onMouseEnter={() => setIsZooming(true)}
-              onMouseLeave={() => setIsZooming(false)}
-              onMouseMove={handleImageMouseMove}
-              className="relative block w-full cursor-zoom-in overflow-hidden text-left"
-              type="button"
-              aria-label="Ampliar imagem do produto"
-            >
-              <ImageWithFallback
-                src={selectedImage}
-                alt={product.name}
-                className="aspect-[3/4] h-full w-full object-cover md:min-h-[640px]"
-              />
-              <div
-                className={`pointer-events-none absolute inset-0 hidden bg-no-repeat transition-opacity duration-200 md:block ${isZooming ? 'opacity-100' : 'opacity-0'}`}
-                style={{
-                  backgroundImage: selectedImage ? `url(${selectedImage})` : undefined,
-                  backgroundPosition: `${zoomPosition.x}% ${zoomPosition.y}%`,
-                  backgroundSize: '185%',
-                }}
-              />
-              <span className="absolute bottom-4 right-4 rounded-full bg-white/85 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.18em] text-[#3D3835] shadow-sm backdrop-blur-md md:hidden">
-                Toque para ampliar
-              </span>
-            </button>
-            {product.tag !== 'Nenhuma' && (
-              <div className="absolute left-4 top-4 rounded-full bg-[#8B7355] px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white">
-                {product.tag}
+          <div className="min-w-0 bg-[#F5F1EC]">
+            <div className="relative">
+              <button
+                onClick={() => setIsLightboxOpen(true)}
+                onMouseEnter={handleZoomEnter}
+                onMouseLeave={handleZoomLeave}
+                onMouseMove={handleZoomMove}
+                className="relative flex h-[54dvh] min-h-[260px] w-full max-h-[430px] cursor-zoom-in items-center justify-center overflow-hidden bg-[#F5F1EC] text-left sm:h-[62dvh] sm:max-h-[560px] md:h-[72dvh] md:min-h-[420px] md:max-h-[680px] lg:cursor-crosshair"
+                type="button"
+                aria-label="Ampliar imagem do produto"
+              >
+                <ImageWithFallback
+                  src={selectedImage}
+                  alt={product.name}
+                  className="h-full max-h-full w-full max-w-full object-contain object-center"
+                />
+                <div
+                  className={`pointer-events-none absolute inset-0 hidden items-center justify-center overflow-hidden bg-[#F5F1EC] transition-opacity duration-150 lg:flex ${isZooming ? 'opacity-100' : 'opacity-0'}`}
+                  aria-hidden="true"
+                >
+                  <ImageWithFallback
+                    src={selectedImage}
+                    alt=""
+                    className="h-full max-h-full w-full max-w-full object-contain object-center will-change-transform"
+                    style={{
+                      transform: `scale(${productZoomScale})`,
+                      transformOrigin: `${zoomPosition.x}% ${zoomPosition.y}%`,
+                    }}
+                  />
+                </div>
+                <span className="absolute bottom-4 right-4 rounded-full bg-white/85 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.18em] text-[#3D3835] shadow-sm backdrop-blur-md md:hidden">
+                  Toque para ampliar
+                </span>
+              </button>
+
+              {hasMultipleImages && (
+                <>
+                  <button
+                    onClick={handlePreviousImage}
+                    className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[#3D3835] shadow-md backdrop-blur-md transition-colors hover:bg-white"
+                    type="button"
+                    aria-label="Imagem anterior"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button
+                    onClick={handleNextImage}
+                    className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[#3D3835] shadow-md backdrop-blur-md transition-colors hover:bg-white"
+                    type="button"
+                    aria-label="Próxima imagem"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                  <span className="absolute bottom-4 left-4 rounded-full bg-white/85 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.18em] text-[#3D3835] shadow-sm backdrop-blur-md">
+                    {activeImageIndex + 1}/{galleryImages.length}
+                  </span>
+                </>
+              )}
+
+              {product.tag !== 'Nenhuma' && (
+                <div className="absolute left-4 top-4 rounded-full bg-[#8B7355] px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white">
+                  {product.tag}
+                </div>
+              )}
+            </div>
+
+            {hasMultipleImages && (
+              <div className="flex max-w-full gap-2 overflow-x-auto overscroll-x-contain border-t border-[#E5E0D8] bg-[#FDFCF7] p-3">
+                {galleryImages.map((imageUrl, imageIndex) => (
+                  <button
+                    key={`${imageUrl}-${imageIndex}`}
+                    onClick={() => setActiveImageIndex(imageIndex)}
+                    className={`h-16 w-12 shrink-0 overflow-hidden rounded-md border transition-colors sm:h-20 sm:w-16 ${
+                      activeImageIndex === imageIndex
+                        ? 'border-[#8B7355]'
+                        : 'border-[#D8D0C4] hover:border-[#8B7355]'
+                    }`}
+                    type="button"
+                    aria-label={`Ver imagem ${imageIndex + 1}`}
+                  >
+                    <ImageWithFallback
+                      src={imageUrl}
+                      alt={`${product.name} miniatura ${imageIndex + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          <div className="flex flex-col p-6 sm:p-8 lg:p-10">
+          <div className="flex min-w-0 flex-col p-6 sm:p-8 lg:p-10">
             <div className="mb-8 flex items-start justify-between gap-4">
               <div className="space-y-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#9B8F7E]">{product.category}</p>
@@ -760,9 +899,9 @@ function ProductDetailsModal({
       </section>
 
       {isLightboxOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#1F1B18]/90 p-4">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#1F1B18]/90 p-3 sm:p-4">
           <button className="absolute inset-0 cursor-default" onClick={() => setIsLightboxOpen(false)} type="button" aria-label="Fechar imagem ampliada" />
-          <div className="relative w-full max-w-4xl">
+          <div className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl items-center justify-center sm:h-[calc(100dvh-2rem)]">
             <button
               onClick={() => setIsLightboxOpen(false)}
               className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-lg backdrop-blur-md transition-colors hover:bg-white"
@@ -774,8 +913,29 @@ function ProductDetailsModal({
             <ImageWithFallback
               src={selectedImage}
               alt={`${product.name} ampliado`}
-              className="max-h-[86vh] w-full rounded-lg object-contain shadow-2xl"
+              className="max-h-full max-w-full rounded-lg object-contain object-center shadow-2xl"
+              style={{ touchAction: 'pinch-zoom' }}
             />
+            {hasMultipleImages && (
+              <>
+                <button
+                  onClick={handlePreviousImage}
+                  className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-lg backdrop-blur-md transition-colors hover:bg-white"
+                  type="button"
+                  aria-label="Imagem anterior"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  onClick={handleNextImage}
+                  className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-lg backdrop-blur-md transition-colors hover:bg-white"
+                  type="button"
+                  aria-label="Próxima imagem"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

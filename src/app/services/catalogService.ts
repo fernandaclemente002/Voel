@@ -1,6 +1,6 @@
 import { fallbackCatalog } from '../data/fallbackCatalog';
 import { isSupabaseConfigured, productImagesBucket, requireSupabase, supabase } from '../lib/supabase';
-import type { CatalogData, Category, CategoryInput, Product, ProductInput, ProductTag } from '../types/catalog';
+import type { CatalogData, Category, CategoryInput, Product, ProductColorImages, ProductInput, ProductTag } from '../types/catalog';
 
 type CategoryRow = {
   id: string;
@@ -45,21 +45,45 @@ function mapCategory(row: CategoryRow): Category {
   };
 }
 
-function normalizeColorImages(value: unknown): Record<string, string> {
+function normalizeImageUrls(value: unknown) {
+  if (typeof value === 'string') {
+    const imageUrl = value.trim();
+    return imageUrl ? [imageUrl] : [];
+  }
+
+  if (!Array.isArray(value)) return [];
+
+  return value.reduce<string[]>((imageUrls, item) => {
+    const imageUrl = typeof item === 'string' ? item.trim() : '';
+    if (!imageUrl || imageUrls.includes(imageUrl)) return imageUrls;
+    return [...imageUrls, imageUrl];
+  }, []);
+}
+
+function normalizeColorImages(value: unknown): ProductColorImages {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
   }
 
-  return Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>((images, [color, imageUrl]) => {
+  return Object.entries(value as Record<string, unknown>).reduce<ProductColorImages>((images, [color, imageValue]) => {
     const normalizedColor = color.trim();
-    const normalizedImageUrl = typeof imageUrl === 'string' ? imageUrl.trim() : '';
+    const imageUrls = normalizeImageUrls(imageValue);
 
-    if (normalizedColor && normalizedImageUrl) {
-      images[normalizedColor] = normalizedImageUrl;
+    if (normalizedColor && imageUrls.length > 0) {
+      images[normalizedColor] = imageUrls.length === 1 ? imageUrls[0] : imageUrls;
     }
 
     return images;
   }, {});
+}
+
+function getFirstColorImageUrl(colorImages: ProductColorImages) {
+  for (const imageValue of Object.values(colorImages)) {
+    const imageUrls = normalizeImageUrls(imageValue);
+    if (imageUrls.length > 0) return imageUrls[0];
+  }
+
+  return '';
 }
 
 function uniqueTextValues(values: string[]) {
@@ -96,7 +120,7 @@ function mapProduct(row: ProductRow, categoriesById: Map<string, Category>): Pro
     category: category?.name ?? 'Sem categoria',
     categorySlug: category?.slug,
     tag: row.tag ?? 'Nenhuma',
-    imageUrl: row.image_url ?? '',
+    imageUrl: row.image_url?.trim() || getFirstColorImageUrl(colorImages),
     imagePath: row.image_path,
     maxInstallments: Math.max(1, Number(row.max_installments ?? 1)),
     availableSizes: row.available_sizes ?? [],
@@ -120,6 +144,8 @@ function toCategoryPayload(input: CategoryInput) {
 }
 
 function toProductPayload(input: ProductInput) {
+  const colorImages = normalizeColorImages(input.colorImages);
+
   return {
     name: input.name.trim(),
     description: input.description.trim(),
@@ -131,8 +157,8 @@ function toProductPayload(input: ProductInput) {
     image_path: input.imagePath ?? null,
     max_installments: Math.max(1, Number(input.maxInstallments) || 1),
     available_sizes: input.availableSizes,
-    available_colors: input.availableColors,
-    color_images: input.colorImages ?? {},
+    available_colors: uniqueTextValues([...input.availableColors, ...Object.keys(colorImages)]),
+    color_images: colorImages,
     sku: input.sku?.trim() || null,
     details: input.details?.trim() || null,
     is_active: input.isActive,

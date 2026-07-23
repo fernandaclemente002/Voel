@@ -2,7 +2,9 @@ export type ProductTag = 'Destaque' | 'Novo' | 'Sale' | 'Exclusivo' | 'Nenhuma';
 
 export const productTags: ProductTag[] = ['Destaque', 'Novo', 'Sale', 'Exclusivo', 'Nenhuma'];
 
-export type ProductColorImages = Record<string, string>;
+export type ProductColorImageValue = string | string[];
+
+export type ProductColorImages = Record<string, ProductColorImageValue>;
 
 export interface Category {
   id: string;
