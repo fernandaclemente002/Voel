@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ChangeEvent, MouseEvent } from 'react';
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, Instagram, Mail, Menu, MessageCircle, Search, Truck, X, Zap } from 'lucide-react';
 import { fetchPublicCatalog } from '../services/catalogService';
-import type { Category, Product } from '../types/catalog';
+import type { Category, Product, SiteBanner, SiteSettings } from '../types/catalog';
+import { defaultSiteSettings } from '../types/catalog';
 
 const favoriteStorageKey = 'voel:favorites';
-const whatsappNumber = '5511930224490';
 const publicLowStockLimit = 3;
 const productZoomScale = 1.85;
 
@@ -24,6 +24,8 @@ type PurchaseOptions = {
   paymentMode?: PaymentMode;
   installments?: number;
 };
+
+const bannerIntervalMs = 6000;
 
 function ImageWithFallback({ src, alt, className, style }: { src: string; alt: string; className?: string; style?: CSSProperties }) {
   const [error, setError] = useState(false);
@@ -48,6 +50,40 @@ function normalizeText(value: string) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+function normalizeWhatsappNumber(value: string) {
+  return value.replace(/\D/g, '') || defaultSiteSettings.whatsappNumber;
+}
+
+function getInstagramLabel(url: string) {
+  try {
+    const pathname = new URL(url).pathname.replace(/^\/+|\/+$/g, '');
+    const firstSegment = pathname.split('/')[0];
+    return firstSegment ? `@${firstSegment}` : '@voel.oficial';
+  } catch {
+    return '@voel.oficial';
+  }
+}
+
+function getBannerContentPositionClass(position: SiteBanner['contentPosition']) {
+  if (position === 'bottom_left') return 'items-end justify-start text-left';
+  if (position === 'bottom_right') return 'items-end justify-end text-right';
+  if (position === 'bottom_center') return 'items-end justify-center text-center';
+  return 'items-center justify-center text-center';
+}
+
+function getBannerTextAlignmentClass(position: SiteBanner['contentPosition']) {
+  if (position === 'bottom_left') return 'items-start';
+  if (position === 'bottom_right') return 'items-end';
+  return 'items-center';
+}
+
+function bannerHasContent(banner: SiteBanner) {
+  return Boolean(
+    (banner.showText && (banner.title || banner.subtitle))
+    || banner.buttonEnabled
+  );
 }
 
 function formatCurrency(value: number) {
@@ -128,6 +164,18 @@ function getStockNotice(product: Product) {
   return '';
 }
 
+function getProductTags(product: Product) {
+  return product.tags?.length
+    ? product.tags
+    : product.tag && product.tag !== 'Nenhuma'
+      ? [product.tag]
+      : [];
+}
+
+function productHasTag(product: Product, tagName: string) {
+  return getProductTags(product).some(productTag => normalizeText(productTag) === normalizeText(tagName));
+}
+
 interface HeaderProps {
   onSearchChange: (q: string) => void;
   searchQuery: string;
@@ -137,6 +185,8 @@ interface HeaderProps {
   activePage: string;
   activeCategory: string;
   menuItems: MenuItem[];
+  whatsappNumber: string;
+  instagramUrl: string;
 }
 
 function Header({
@@ -148,6 +198,8 @@ function Header({
   activePage,
   activeCategory,
   menuItems,
+  whatsappNumber,
+  instagramUrl,
 }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -322,7 +374,7 @@ function Header({
                     Favoritos
                   </button>
                   <button
-                    onClick={() => { window.open(`https://wa.me/${whatsappNumber}`); setIsMenuOpen(false); }}
+                    onClick={() => { window.open(`https://wa.me/${normalizeWhatsappNumber(whatsappNumber)}`); setIsMenuOpen(false); }}
                     className="block w-full text-left text-sm uppercase tracking-[0.3em] text-[#3D3835] transition-all hover:translate-x-2 hover:text-[#8B7355]"
                     type="button"
                   >
@@ -334,13 +386,13 @@ function Header({
 
             <div className="border-t border-[#E5E0D8]/30 bg-[#F5F1EC]/50 p-10">
               <a
-                href="https://www.instagram.com/voel.oficial"
+                href={instagramUrl || defaultSiteSettings.instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 text-[#3D3835] transition-colors hover:text-[#8B7355]"
               >
                 <Instagram size={18} />
-                <span className="text-[10px] uppercase tracking-[0.2em]">@voel.oficial</span>
+                <span className="text-[10px] uppercase tracking-[0.2em]">{getInstagramLabel(instagramUrl || defaultSiteSettings.instagramUrl)}</span>
               </a>
             </div>
           </div>
@@ -350,7 +402,11 @@ function Header({
   );
 }
 
-function CatalogFooter({ onWhatsAppChat }: { onWhatsAppChat: () => void }) {
+function CatalogFooter({ onWhatsAppChat, siteSettings }: { onWhatsAppChat: () => void; siteSettings: SiteSettings }) {
+  const contactEmail = siteSettings.contactEmail || defaultSiteSettings.contactEmail;
+  const instagramUrl = siteSettings.instagramUrl || defaultSiteSettings.instagramUrl;
+  const instagramLabel = getInstagramLabel(instagramUrl);
+
   return (
     <footer className="bg-[#332F2C] pb-12 pt-24 text-[#FDFCF7]">
       <div className="container mx-auto px-4">
@@ -376,8 +432,8 @@ function CatalogFooter({ onWhatsAppChat }: { onWhatsAppChat: () => void }) {
                 </a>
               </li>
               <li>
-                <a href="mailto:contato@voel.com.br" className="group flex items-center gap-2 border-t border-white/5 pt-2 lowercase tracking-widest transition-colors hover:text-white">
-                  <Mail size={14} className="transition-colors group-hover:text-[#8B7355]" /> contato@voel.com.br
+                <a href={`mailto:${contactEmail}`} className="group flex items-center gap-2 border-t border-white/5 pt-2 lowercase tracking-widest transition-colors hover:text-white">
+                  <Mail size={14} className="transition-colors group-hover:text-[#8B7355]" /> {contactEmail}
                 </a>
               </li>
             </ul>
@@ -386,7 +442,7 @@ function CatalogFooter({ onWhatsAppChat }: { onWhatsAppChat: () => void }) {
           <div className="flex flex-col">
             <h4 className="mb-10 text-[11px] font-bold uppercase tracking-[0.4em] text-white/90">SIGA-NOS</h4>
             <a
-              href="https://www.instagram.com/voel.oficial"
+              href={instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="group relative block w-full max-w-[280px] overflow-hidden rounded-lg bg-[#FDFCF7] p-5 shadow-2xl transition-all duration-500 hover:-translate-y-1"
@@ -397,7 +453,7 @@ function CatalogFooter({ onWhatsAppChat }: { onWhatsAppChat: () => void }) {
                   <Instagram size={24} className="text-[#FDFCF7]" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#332F2C]">@voel.oficial</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#332F2C]">{instagramLabel}</p>
                   <p className="mt-0.5 text-[8px] uppercase tracking-widest text-[#9B8F7E]">Acompanhe nossas novidades</p>
                 </div>
               </div>
@@ -649,9 +705,13 @@ function ProductDetailsModal({
                 </>
               )}
 
-              {product.tag !== 'Nenhuma' && (
-                <div className="absolute left-4 top-4 rounded-full bg-[#8B7355] px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white">
-                  {product.tag}
+              {getProductTags(product).length > 0 && (
+                <div className="absolute left-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap gap-1">
+                  {getProductTags(product).map(tag => (
+                    <span key={tag} className="rounded-full bg-[#8B7355] px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white">
+                      {tag}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -946,6 +1006,8 @@ function ProductDetailsModal({
 export default function PublicCatalog() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [siteBanners, setSiteBanners] = useState<SiteBanner[]>([]);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSiteSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -964,6 +1026,8 @@ export default function PublicCatalog() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
+  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+  const [isHeroPaused, setIsHeroPaused] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -973,6 +1037,8 @@ export default function PublicCatalog() {
         if (!isMounted) return;
         setProducts(catalog.products);
         setCategories(catalog.categories);
+        setSiteBanners(catalog.siteBanners);
+        setSiteSettings(catalog.siteSettings);
         setLoadError('');
       })
       .catch(() => {
@@ -998,6 +1064,12 @@ export default function PublicCatalog() {
     setFavorites(previous => previous.filter(id => productIds.has(id)));
   }, [products]);
 
+  useEffect(() => {
+    if (activeBannerIndex >= siteBanners.length) {
+      setActiveBannerIndex(0);
+    }
+  }, [activeBannerIndex, siteBanners.length]);
+
   const menuItems = useMemo<MenuItem[]>(() => {
     const categoryIdsWithProducts = new Set(products.map(product => product.categoryId).filter(Boolean));
     const visibleCategories = categories.filter(category => category.isActive && categoryIdsWithProducts.has(category.id));
@@ -1010,6 +1082,7 @@ export default function PublicCatalog() {
   }, [categories, products]);
 
   const activeCategoryLabel = useMemo(() => {
+    if (activeCategory.startsWith('tag:')) return activeCategory.replace('tag:', '');
     if (activeCategory === 'Destaques' || activeCategory === 'Todos') return activeCategory;
     return categories.find(category => category.id === activeCategory)?.name ?? activeCategory;
   }, [activeCategory, categories]);
@@ -1041,11 +1114,40 @@ export default function PublicCatalog() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleBannerAction = (banner?: SiteBanner) => {
+    if (banner?.targetType === 'external' && banner.externalUrl) {
+      window.open(banner.externalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    setActivePage('loja');
+    setShowFavorites(false);
+    setSearchQuery('');
+
+    if (!banner || banner.targetType === 'all') {
+      setActiveCategory('Todos');
+    } else if (banner.targetType === 'featured') {
+      setActiveCategory('Destaques');
+    } else if (banner.targetType === 'tag' && banner.targetValue) {
+      setActiveCategory(`tag:${banner.targetValue}`);
+    } else if (banner.targetType === 'category' && banner.targetValue) {
+      setActiveCategory(banner.targetValue);
+    } else {
+      setActiveCategory('Todos');
+    }
+
+    window.setTimeout(() => {
+      document.getElementById('vitrine')?.scrollIntoView({ behavior: 'smooth' });
+    }, 0);
+  };
+
   const openProductDetails = (product: Product) => {
     setSelectedProduct(product);
     setSelectedSize('');
     setSelectedColor('');
   };
+
+  const officialWhatsappNumber = normalizeWhatsappNumber(siteSettings.whatsappNumber);
 
   const handleBuyNow = (product: Product, options?: PurchaseOptions) => {
     const outOfStock = isOutOfStock(product);
@@ -1082,11 +1184,11 @@ export default function PublicCatalog() {
       finalMessage,
     ].filter(Boolean).join('\n');
 
-    window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`, '_blank');
+    window.open(`https://wa.me/${officialWhatsappNumber}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   const handleWhatsAppChat = () => {
-    window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Olá! Preciso de atendimento.')}`, '_blank');
+    window.open(`https://wa.me/${officialWhatsappNumber}?text=${encodeURIComponent('Olá! Preciso de atendimento.')}`, '_blank');
   };
 
   const baseProducts = useMemo(() => {
@@ -1094,8 +1196,12 @@ export default function PublicCatalog() {
       return products.filter(product => favorites.includes(product.id));
     }
 
-    if (activeCategory === 'Destaques') return products.filter(product => product.tag === 'Destaque');
+    if (activeCategory === 'Destaques') return products.filter(product => productHasTag(product, 'Destaque'));
     if (activeCategory === 'Todos') return products;
+    if (activeCategory.startsWith('tag:')) {
+      const tagName = activeCategory.replace('tag:', '');
+      return products.filter(product => productHasTag(product, tagName));
+    }
     return products.filter(product => product.categoryId === activeCategory);
   }, [activeCategory, favorites, products, showFavorites]);
 
@@ -1108,7 +1214,7 @@ export default function PublicCatalog() {
       normalizeText(product.name).includes(query) ||
       normalizeText(product.category).includes(query) ||
       normalizeText(product.description).includes(query) ||
-      normalizeText(product.tag).includes(query)
+      getProductTags(product).some(productTag => normalizeText(productTag).includes(query))
     );
   }, [baseProducts, searchQuery]);
 
@@ -1133,6 +1239,18 @@ export default function PublicCatalog() {
   }, [filteredProducts.length]);
 
   const isHero = !showFavorites && activeCategory === 'Destaques' && !hasSearch && activePage === 'loja';
+  const activeHeroBanner = siteBanners[activeBannerIndex] ?? siteBanners[0];
+  const hasMultipleHeroBanners = siteBanners.length > 1;
+
+  useEffect(() => {
+    if (!isHero || !hasMultipleHeroBanners || isHeroPaused) return;
+
+    const intervalId = window.setInterval(() => {
+      setActiveBannerIndex(previous => (previous + 1) % siteBanners.length);
+    }, bannerIntervalMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [hasMultipleHeroBanners, isHero, isHeroPaused, siteBanners.length]);
 
   return (
     <div className="min-h-screen bg-[#FDFCF7] font-sans text-[#3D3835] selection:bg-[#8B7355]/20">
@@ -1145,29 +1263,120 @@ export default function PublicCatalog() {
         activePage={activePage}
         activeCategory={activeCategory}
         menuItems={menuItems}
+        whatsappNumber={officialWhatsappNumber}
+        instagramUrl={siteSettings.instagramUrl}
       />
 
       <main>
         {activePage === 'loja' ? (
           <>
             {isHero && (
-              <section className="relative h-[90vh] w-full overflow-hidden bg-[#F5F1EC]">
-                <ImageWithFallback
-                  src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2000"
-                  alt="Nova Coleção"
-                  className="h-full w-full object-cover opacity-90"
-                />
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10 text-white">
-                  <h1 className="mb-4 px-4 text-center font-serif text-5xl uppercase tracking-[0.2em] drop-shadow-lg md:text-7xl">VÖEL Brand</h1>
-                  <p className="mb-10 text-sm font-light uppercase tracking-[0.4em] drop-shadow-md md:text-lg">A essência do minimalismo</p>
-                  <button
-                    onClick={() => document.getElementById('vitrine')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="group flex items-center gap-3 rounded-full bg-white px-10 py-4 text-xs uppercase tracking-[0.3em] text-[#3D3835] transition-all duration-500 hover:bg-[#3D3835] hover:text-white"
-                    type="button"
+              <section
+                className="relative h-[58dvh] min-h-[360px] max-h-[560px] w-full overflow-hidden bg-[#2F2A27] sm:h-[68dvh] md:h-[88dvh] md:min-h-[560px] md:max-h-none"
+                onClick={() => handleBannerAction(activeHeroBanner)}
+                onMouseEnter={() => setIsHeroPaused(true)}
+                onMouseLeave={() => setIsHeroPaused(false)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleBannerAction(activeHeroBanner);
+                  }
+                }}
+                aria-label="Banner principal"
+              >
+                {siteBanners.map((banner, bannerIndex) => (
+                  <div
+                    key={banner.id}
+                    className={`absolute inset-0 transition-all duration-700 ease-out ${activeBannerIndex === bannerIndex ? 'translate-x-0 opacity-100' : 'translate-x-3 opacity-0'}`}
+                    aria-hidden={activeBannerIndex !== bannerIndex}
                   >
-                    Ver Vitrine <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
-                  </button>
-                </div>
+                    {banner.imageFit === 'contain' && (
+                      <ImageWithFallback
+                        src={banner.imageUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-45 blur-xl"
+                      />
+                    )}
+                    <ImageWithFallback
+                      src={banner.imageUrl}
+                      alt={banner.title || banner.subtitle || 'Banner VÖEL'}
+                      className={`h-full w-full object-center ${banner.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+                    />
+
+                    {bannerHasContent(banner) && (
+                      <div className={`absolute inset-0 flex bg-gradient-to-t from-black/50 via-black/15 to-black/10 px-5 py-14 sm:px-8 md:px-12 md:py-20 ${getBannerContentPositionClass(banner.contentPosition)}`} style={{ color: banner.textColor || '#FFFFFF' }}>
+                        <div className={`flex max-w-[min(84vw,720px)] flex-col gap-2.5 sm:gap-4 md:gap-5 ${getBannerTextAlignmentClass(banner.contentPosition)}`}>
+                          {banner.showText && banner.title && (
+                            <h1 className="max-w-full overflow-hidden break-words font-serif text-2xl uppercase leading-tight drop-shadow-lg [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] sm:text-4xl md:text-6xl lg:text-7xl">
+                              {banner.title}
+                            </h1>
+                          )}
+                          {banner.showText && banner.subtitle && (
+                            <p className="max-w-[38rem] overflow-hidden text-[10px] font-light uppercase leading-relaxed drop-shadow-md [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] sm:text-xs md:text-sm lg:text-base">
+                              {banner.subtitle}
+                            </p>
+                          )}
+                          {banner.buttonEnabled && (
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleBannerAction(banner);
+                              }}
+                              className="group mt-1 inline-flex max-w-full items-center justify-center gap-3 rounded-full bg-white/88 px-6 py-3 text-[10px] font-bold uppercase text-[#3D3835] shadow-lg backdrop-blur-md transition-all duration-500 hover:bg-[#3D3835]/90 hover:text-white sm:px-8 md:px-10 md:py-4 md:text-xs"
+                              type="button"
+                            >
+                              <span className="truncate">{banner.buttonLabel?.trim() || 'Ver vitrine'}</span>
+                              <ArrowRight size={14} className="shrink-0 transition-transform group-hover:translate-x-1" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {hasMultipleHeroBanners && (
+                  <>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setActiveBannerIndex(previous => previous === 0 ? siteBanners.length - 1 : previous - 1);
+                      }}
+                      className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/45 text-[#3D3835] shadow-md backdrop-blur-md transition-colors hover:bg-white/85 sm:left-4 sm:h-11 sm:w-11"
+                      type="button"
+                      aria-label="Banner anterior"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setActiveBannerIndex(previous => (previous + 1) % siteBanners.length);
+                      }}
+                      className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/45 text-[#3D3835] shadow-md backdrop-blur-md transition-colors hover:bg-white/85 sm:right-4 sm:h-11 sm:w-11"
+                      type="button"
+                      aria-label="Próximo banner"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                    <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-white/55 px-2.5 py-2 backdrop-blur-md sm:bottom-6 sm:gap-2 sm:px-3">
+                      {siteBanners.map((banner, bannerIndex) => (
+                        <button
+                          key={banner.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setActiveBannerIndex(bannerIndex);
+                          }}
+                          className={`h-2 rounded-full transition-all sm:h-2.5 ${activeBannerIndex === bannerIndex ? 'w-6 bg-[#8B7355] sm:w-7' : 'w-2 bg-[#3D3835]/35 hover:bg-[#3D3835]/60 sm:w-2.5'}`}
+                          type="button"
+                          aria-label={`Ver banner ${bannerIndex + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
               </section>
             )}
 
@@ -1249,9 +1458,13 @@ export default function PublicCatalog() {
                             </button>
                           </div>
 
-                          {product.tag !== 'Nenhuma' && (
-                            <div className="absolute left-3 top-3 rounded-full bg-[#8B7355] px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white md:left-4 md:top-4">
-                              {product.tag}
+                          {getProductTags(product).length > 0 && (
+                            <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1 md:left-4 md:top-4 md:max-w-[calc(100%-2rem)]">
+                              {getProductTags(product).map(tag => (
+                                <span key={tag} className="rounded-full bg-[#8B7355] px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-white">
+                                  {tag}
+                                </span>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -1342,7 +1555,7 @@ export default function PublicCatalog() {
         )}
       </main>
 
-      <CatalogFooter onWhatsAppChat={handleWhatsAppChat} />
+      <CatalogFooter onWhatsAppChat={handleWhatsAppChat} siteSettings={siteSettings} />
 
       <button
         onClick={handleWhatsAppChat}
