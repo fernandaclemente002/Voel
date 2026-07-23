@@ -1,4 +1,5 @@
-import type { CatalogData, Product } from '../types/catalog';
+import type { CatalogData, Product, ProductTagRecord, SiteBanner } from '../types/catalog';
+import { defaultProductTags, defaultSiteSettings } from '../types/catalog';
 
 const fallbackCategories = [
   {
@@ -188,8 +189,44 @@ const fallbackProducts: Product[] = [
   },
 ];
 
+const fallbackSiteBanners: SiteBanner[] = [
+  {
+    id: 'fallback-banner',
+    imageUrl: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2000',
+    title: null,
+    subtitle: null,
+    textColor: '#FFFFFF',
+    imageFit: 'cover',
+    contentPosition: 'bottom_center',
+    showText: false,
+    buttonEnabled: false,
+    buttonLabel: null,
+    targetType: 'all',
+    targetValue: null,
+    externalUrl: null,
+    sortOrder: 0,
+    active: true,
+  },
+];
+
+const fallbackProductTags: ProductTagRecord[] = defaultProductTags.map((name, index) => ({
+  id: `fallback-tag-${index}`,
+  name,
+  slug: name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, ''),
+  active: true,
+  sortOrder: index,
+}));
+
 export const fallbackCatalog: CatalogData = {
   categories: fallbackCategories,
   products: fallbackProducts,
+  productTags: fallbackProductTags,
+  siteBanners: fallbackSiteBanners,
+  siteSettings: defaultSiteSettings,
   source: 'fallback',
 };
