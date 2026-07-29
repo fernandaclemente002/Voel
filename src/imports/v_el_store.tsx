@@ -368,15 +368,15 @@ export default function App() {
                       <div className="w-16 h-16 border border-[#8B7355]/30 rounded-full flex items-center justify-center mb-6 group-hover:bg-[#8B7355]/10 transition-colors">
                         <Zap className="text-[#8B7355]" size={24} />
                       </div>
-                      <h4 className="font-serif text-sm uppercase tracking-[0.3em] mb-4">Entrega Rápida</h4>
-                      <p className="text-[#9B8F7E] text-[11px] leading-relaxed tracking-widest">Receba as suas peças favoritas em até 3 dias úteis com envio prioritário para todo o país.</p>
+                      <h4 className="font-serif text-sm uppercase tracking-[0.3em] mb-4">Entregas</h4>
+                      <p className="text-[#9B8F7E] max-w-[21rem] text-pretty text-xs md:text-[11px] leading-relaxed tracking-wide">Todas as entregas somente aos sábados temporariamente.</p>
                     </div>
                     <div className="flex flex-col items-center text-center px-6 group">
                       <div className="w-16 h-16 border border-[#8B7355]/30 rounded-full flex items-center justify-center mb-6 group-hover:bg-[#8B7355]/10 transition-colors">
                         <Heart className="text-[#8B7355]" size={24} />
                       </div>
                       <h4 className="font-serif text-sm uppercase tracking-[0.3em] mb-4">Troca Garantida</h4>
-                      <p className="text-[#9B8F7E] text-[11px] leading-relaxed tracking-widest">Até 30 dias para trocar ou devolver a sua compra sem burocracias, com suporte total.</p>
+                      <p className="text-[#9B8F7E] max-w-[21rem] text-pretty text-xs md:text-[11px] leading-relaxed tracking-wide">Até 7 dias para solicitar troca ou devolução. O reembolso é realizado após o recebimento e conferência da peça em nossa loja.</p>
                     </div>
                   </div>
                 )}
