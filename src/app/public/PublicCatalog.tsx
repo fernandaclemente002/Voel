@@ -1511,15 +1511,15 @@ export default function PublicCatalog() {
                   <div className="mt-32 grid grid-cols-1 gap-16 rounded-lg border-t border-[#E5E0D8]/40 bg-[#F5F1EC]/30 py-20 md:grid-cols-3">
                     {[
                       { Icon: Check, title: 'Qualidade Premium', text: 'Materiais selecionados e acabamento impecável em cada detalhe das nossas peças.' },
-                      { Icon: Zap, title: 'Entrega Rápida', text: 'Receba as suas peças favoritas em até 3 dias úteis com envio prioritário para todo o país.' },
-                      { Icon: Heart, title: 'Troca Garantida', text: 'Até 30 dias para trocar ou devolver a sua compra sem burocracias, com suporte total.' },
+                      { Icon: Zap, title: 'Entregas', text: 'Todas as entregas somente aos sábados temporariamente.' },
+                      { Icon: Heart, title: 'Troca Garantida', text: 'Até 7 dias para solicitar troca ou devolução. O reembolso é realizado após o recebimento e conferência da peça em nossa loja.' },
                     ].map(({ Icon, title, text }) => (
                       <div key={title} className="group flex flex-col items-center px-6 text-center">
                         <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-[#8B7355]/30 transition-colors group-hover:bg-[#8B7355]/10">
                           <Icon className="text-[#8B7355]" size={24} />
                         </div>
                         <h4 className="mb-4 font-serif text-sm uppercase tracking-[0.3em]">{title}</h4>
-                        <p className="text-[11px] leading-relaxed tracking-widest text-[#9B8F7E]">{text}</p>
+                        <p className="max-w-[21rem] text-pretty text-xs leading-relaxed tracking-wide text-[#9B8F7E] md:text-[11px]">{text}</p>
                       </div>
                     ))}
                   </div>
