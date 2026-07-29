@@ -2,7 +2,12 @@ export type ProductTag = string;
 
 export const defaultProductTags: ProductTag[] = ['Destaque', 'Novo', 'Promoção', 'Sale', 'Exclusivo'];
 
-export type ProductColorImageValue = string | string[];
+export type ProductColorImageGroup = {
+  images?: string[];
+  details?: string[];
+};
+
+export type ProductColorImageValue = string | string[] | ProductColorImageGroup;
 
 export type ProductColorImages = Record<string, ProductColorImageValue>;
 

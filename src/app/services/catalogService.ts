@@ -7,6 +7,7 @@ import type {
   CategoryInput,
   Product,
   ProductColorImages,
+  ProductColorImageValue,
   ProductInput,
   ProductTag,
   ProductTagInput,
@@ -69,7 +70,7 @@ type ProductRow = {
   image_url: string | null;
   image_path: string | null;
   max_installments: number | null;
-  available_sizes: string[] | null;
+  available_sizes: unknown;
   available_colors: string[] | null;
   color_images: unknown;
   sku: string | null;
@@ -130,6 +131,48 @@ const siteBannerImageFits: SiteBannerImageFit[] = ['cover', 'contain'];
 const siteBannerContentPositions: SiteBannerContentPosition[] = ['center', 'bottom_center', 'bottom_left', 'bottom_right'];
 const siteBannerSelect = 'id,image_url,title,subtitle,text_color,image_fit,content_position,show_text,button_enabled,button_label,target_type,target_value,external_url,sort_order,active,created_at,updated_at';
 const legacySiteBannerSelect = 'id,image_url,title,subtitle,text_color,show_text,button_enabled,button_label,target_type,target_value,external_url,sort_order,active,created_at,updated_at';
+const complementaryImageGroupLabels = new Set([
+  'costas',
+  'detalhe',
+  'detalhe da peca',
+  'detalhe peca',
+  'detalhes',
+  'detalhes da peca',
+  'detalhes peca',
+  'details',
+  'foto costas',
+  'foto da lateral',
+  'foto de costas',
+  'foto de detalhe',
+  'foto de detalhes',
+  'foto de frente',
+  'foto detalhe',
+  'foto lateral',
+  'fotos costas',
+  'fotos de costas',
+  'fotos de detalhe',
+  'fotos de detalhes',
+  'fotos de frente',
+  'fotos detalhe',
+  'fotos extras',
+  'frente',
+  'imagens extras',
+  'lateral',
+]);
+
+function normalizeImageGroupLabel(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isComplementaryImageGroupName(value: string) {
+  return complementaryImageGroupLabels.has(normalizeImageGroupLabel(value));
+}
 
 function normalizeSiteBannerTargetType(value: string | null): SiteBannerTargetType {
   if (value === 'tag_new' || value === 'tag_promotion' || value === 'tag_sale') return 'tag';
@@ -210,6 +253,42 @@ function normalizeImageUrls(value: unknown) {
   }, []);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizeColorImageValue(imageValue: unknown): ProductColorImageValue | null {
+  if (isRecord(imageValue) && ('images' in imageValue || 'details' in imageValue)) {
+    const images = normalizeImageUrls(imageValue.images);
+    const details = normalizeImageUrls(imageValue.details);
+
+    if (images.length === 0 && details.length === 0) return null;
+
+    return {
+      images,
+      details,
+    };
+  }
+
+  const imageUrls = normalizeImageUrls(imageValue);
+  if (imageUrls.length === 0) return null;
+
+  return imageUrls.length === 1 ? imageUrls[0] : imageUrls;
+}
+
+function getColorImageUrls(imageValue: ProductColorImageValue | undefined) {
+  if (!imageValue) return [];
+
+  if (typeof imageValue === 'string' || Array.isArray(imageValue)) {
+    return normalizeImageUrls(imageValue);
+  }
+
+  return [
+    ...normalizeImageUrls(imageValue.images),
+    ...normalizeImageUrls(imageValue.details),
+  ];
+}
+
 function normalizeColorImages(value: unknown): ProductColorImages {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
@@ -217,10 +296,10 @@ function normalizeColorImages(value: unknown): ProductColorImages {
 
   return Object.entries(value as Record<string, unknown>).reduce<ProductColorImages>((images, [color, imageValue]) => {
     const normalizedColor = color.trim();
-    const imageUrls = normalizeImageUrls(imageValue);
+    const normalizedImageValue = normalizeColorImageValue(imageValue);
 
-    if (normalizedColor && imageUrls.length > 0) {
-      images[normalizedColor] = imageUrls.length === 1 ? imageUrls[0] : imageUrls;
+    if (normalizedColor && normalizedImageValue) {
+      images[normalizedColor] = normalizedImageValue;
     }
 
     return images;
@@ -229,7 +308,7 @@ function normalizeColorImages(value: unknown): ProductColorImages {
 
 function getFirstColorImageUrl(colorImages: ProductColorImages) {
   for (const imageValue of Object.values(colorImages)) {
-    const imageUrls = normalizeImageUrls(imageValue);
+    const imageUrls = getColorImageUrls(imageValue);
     if (imageUrls.length > 0) return imageUrls[0];
   }
 
@@ -253,6 +332,39 @@ function uniqueTextValues(values: string[]) {
     ));
 
     return alreadyExists ? uniqueValues : [...uniqueValues, trimmed];
+  }, []);
+}
+
+function normalizeComparable(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeSizeLabel(value: string) {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+
+  const comparable = normalizeComparable(trimmed);
+  if (comparable === 'unico' || comparable === 'unica') return 'Único';
+  return /^[a-z]+$/i.test(trimmed) ? trimmed.toUpperCase() : trimmed;
+}
+
+function normalizeProductSizes(value: unknown) {
+  const rawSizes = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+
+  return rawSizes.reduce<string[]>((sizes, item) => {
+    const normalizedSize = typeof item === 'string' ? normalizeSizeLabel(item) : '';
+    if (!normalizedSize) return sizes;
+
+    const alreadyExists = sizes.some(size => normalizeComparable(size) === normalizeComparable(normalizedSize));
+    return alreadyExists ? sizes : [...sizes, normalizedSize];
   }, []);
 }
 
@@ -289,8 +401,9 @@ function mapProduct(row: ProductRow, categoriesById: Map<string, Category>): Pro
     imageUrl: row.image_url?.trim() || getFirstColorImageUrl(colorImages),
     imagePath: row.image_path,
     maxInstallments: Math.max(1, Number(row.max_installments ?? 1)),
-    availableSizes: row.available_sizes ?? [],
-    availableColors: uniqueTextValues([...(row.available_colors ?? []), ...Object.keys(colorImages)]),
+    availableSizes: normalizeProductSizes(row.available_sizes),
+    availableColors: uniqueTextValues([...(row.available_colors ?? []), ...Object.keys(colorImages)])
+      .filter(color => !isComplementaryImageGroupName(color)),
     colorImages,
     sku: row.sku,
     details: row.details,
@@ -441,8 +554,9 @@ function toProductPayload(input: ProductInput) {
     image_url: input.imageUrl,
     image_path: input.imagePath ?? null,
     max_installments: Math.max(1, Number(input.maxInstallments) || 1),
-    available_sizes: input.availableSizes,
-    available_colors: uniqueTextValues([...input.availableColors, ...Object.keys(colorImages)]),
+    available_sizes: normalizeProductSizes(input.availableSizes),
+    available_colors: uniqueTextValues([...input.availableColors, ...Object.keys(colorImages)])
+      .filter(color => !isComplementaryImageGroupName(color)),
     color_images: colorImages,
     sku: input.sku?.trim() || null,
     details: input.details?.trim() || null,

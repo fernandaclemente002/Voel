@@ -26,6 +26,34 @@ type PurchaseOptions = {
 };
 
 const bannerIntervalMs = 6000;
+const complementaryImageGroupLabels = new Set([
+  'costas',
+  'detalhe',
+  'detalhe da peca',
+  'detalhe peca',
+  'detalhes',
+  'detalhes da peca',
+  'detalhes peca',
+  'details',
+  'foto costas',
+  'foto da lateral',
+  'foto de costas',
+  'foto de detalhe',
+  'foto de detalhes',
+  'foto de frente',
+  'foto detalhe',
+  'foto lateral',
+  'fotos costas',
+  'fotos de costas',
+  'fotos de detalhe',
+  'fotos de detalhes',
+  'fotos de frente',
+  'fotos detalhe',
+  'fotos extras',
+  'frente',
+  'imagens extras',
+  'lateral',
+]);
 
 function ImageWithFallback({ src, alt, className, style }: { src: string; alt: string; className?: string; style?: CSSProperties }) {
   const [error, setError] = useState(false);
@@ -50,6 +78,55 @@ function normalizeText(value: string) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+function normalizeImageGroupLabel(value: string) {
+  return normalizeText(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeSizeLabel(value: string) {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+
+  const comparable = normalizeImageGroupLabel(trimmed);
+  if (comparable === 'unico' || comparable === 'unica') return 'Único';
+  return /^[a-z]+$/i.test(trimmed) ? trimmed.toUpperCase() : trimmed;
+}
+
+function isComplementaryImageGroupName(value: string) {
+  return complementaryImageGroupLabels.has(normalizeImageGroupLabel(value));
+}
+
+function uniqueTextValues(values: string[]) {
+  return values.reduce<string[]>((uniqueValues, value) => {
+    const trimmed = value.trim();
+    if (!trimmed) return uniqueValues;
+
+    const normalizedValue = normalizeImageGroupLabel(trimmed);
+    const alreadyExists = uniqueValues.some(existing => normalizeImageGroupLabel(existing) === normalizedValue);
+    return alreadyExists ? uniqueValues : [...uniqueValues, trimmed];
+  }, []);
+}
+
+function uniqueSizeValues(values: string[]) {
+  return values.reduce<string[]>((uniqueValues, value) => {
+    const normalizedSize = normalizeSizeLabel(value);
+    if (!normalizedSize) return uniqueValues;
+
+    const alreadyExists = uniqueValues.some(existing => normalizeImageGroupLabel(existing) === normalizeImageGroupLabel(normalizedSize));
+    return alreadyExists ? uniqueValues : [...uniqueValues, normalizedSize];
+  }, []);
+}
+
+function uniqueImageUrls(imageUrls: string[]) {
+  return imageUrls.reduce<string[]>((uniqueUrls, imageUrl) => {
+    const trimmed = imageUrl.trim();
+    if (!trimmed || uniqueUrls.includes(trimmed)) return uniqueUrls;
+    return [...uniqueUrls, trimmed];
+  }, []);
 }
 
 function normalizeWhatsappNumber(value: string) {
@@ -110,28 +187,79 @@ function getImageUrls(imageValue: Product['colorImages'][string] | undefined) {
     return imageUrl ? [imageUrl] : [];
   }
 
+  if (imageValue && typeof imageValue === 'object' && !Array.isArray(imageValue)) {
+    return uniqueImageUrls([
+      ...getImageUrls(imageValue.images),
+      ...getImageUrls(imageValue.details),
+    ]);
+  }
+
   if (!Array.isArray(imageValue)) return [];
 
   return imageValue.reduce<string[]>((imageUrls, item) => {
-    const imageUrl = item.trim();
+    const imageUrl = typeof item === 'string' ? item.trim() : '';
     if (!imageUrl || imageUrls.includes(imageUrl)) return imageUrls;
     return [...imageUrls, imageUrl];
   }, []);
 }
 
+function getMainImageUrls(imageValue: Product['colorImages'][string] | undefined) {
+  if (imageValue && typeof imageValue === 'object' && !Array.isArray(imageValue)) {
+    return getImageUrls(imageValue.images);
+  }
+
+  return getImageUrls(imageValue);
+}
+
+function getDetailImageUrls(imageValue: Product['colorImages'][string] | undefined) {
+  if (!imageValue || typeof imageValue !== 'object' || Array.isArray(imageValue)) return [];
+  return getImageUrls(imageValue.details);
+}
+
+function getPublicColorOptions(product: Product) {
+  return uniqueTextValues([...(product.availableColors ?? []), ...Object.keys(product.colorImages)])
+    .filter(color => !isComplementaryImageGroupName(color));
+}
+
+function findPublicColorOption(product: Product, color: string) {
+  if (!color || isComplementaryImageGroupName(color)) return '';
+
+  const normalizedColor = normalizeImageGroupLabel(color);
+  return getPublicColorOptions(product).find(colorOption => normalizeImageGroupLabel(colorOption) === normalizedColor) ?? '';
+}
+
+function getPublicSizeOptions(product: Product) {
+  return uniqueSizeValues(product.availableSizes ?? []);
+}
+
+function findPublicSizeOption(product: Product, size: string) {
+  if (!size) return '';
+
+  const normalizedSize = normalizeImageGroupLabel(size);
+  return getPublicSizeOptions(product).find(sizeOption => normalizeImageGroupLabel(sizeOption) === normalizedSize) ?? '';
+}
+
 function getColorImages(product: Product, selectedColor: string) {
   if (!selectedColor) return [];
 
-  const directImages = getImageUrls(product.colorImages[selectedColor]);
+  const directImages = uniqueImageUrls([
+    ...getMainImageUrls(product.colorImages[selectedColor]),
+    ...getDetailImageUrls(product.colorImages[selectedColor]),
+  ]);
   if (directImages.length > 0) return directImages;
 
-  const normalizedSelectedColor = normalizeText(selectedColor);
-  const matchedImageValue = Object.entries(product.colorImages).find(([color]) => normalizeText(color) === normalizedSelectedColor)?.[1];
-  return getImageUrls(matchedImageValue);
+  const normalizedSelectedColor = normalizeImageGroupLabel(selectedColor);
+  const matchedImageValue = Object.entries(product.colorImages).find(([color]) => normalizeImageGroupLabel(color) === normalizedSelectedColor)?.[1];
+  return uniqueImageUrls([
+    ...getMainImageUrls(matchedImageValue),
+    ...getDetailImageUrls(matchedImageValue),
+  ]);
 }
 
 function getFirstAvailableColorImages(product: Product) {
-  for (const imageValue of Object.values(product.colorImages)) {
+  for (const [groupName, imageValue] of Object.entries(product.colorImages)) {
+    if (isComplementaryImageGroupName(groupName)) continue;
+
     const imageUrls = getImageUrls(imageValue);
     if (imageUrls.length > 0) return imageUrls;
   }
@@ -139,15 +267,38 @@ function getFirstAvailableColorImages(product: Product) {
   return [];
 }
 
+function getComplementaryGalleryImages(product: Product) {
+  const complementaryImages = Object.entries(product.colorImages).flatMap(([groupName, imageValue]) => (
+    isComplementaryImageGroupName(groupName) ? getImageUrls(imageValue) : []
+  ));
+
+  return uniqueImageUrls(complementaryImages);
+}
+
 function getProductGalleryImages(product: Product, selectedColor: string) {
-  if (selectedColor) {
-    const colorImages = getColorImages(product, selectedColor);
-    if (colorImages.length > 0) return colorImages;
+  const complementaryImages = getComplementaryGalleryImages(product);
+  const publicColorOptions = getPublicColorOptions(product);
+  const selectedPublicColor = findPublicColorOption(product, selectedColor);
+
+  if (selectedPublicColor) {
+    const colorImages = getColorImages(product, selectedPublicColor);
+    const galleryImages = uniqueImageUrls([...colorImages, ...complementaryImages]);
+    if (galleryImages.length > 0) return galleryImages;
     return product.imageUrl ? [product.imageUrl] : [];
   }
 
-  if (product.imageUrl) return [product.imageUrl];
-  return getFirstAvailableColorImages(product);
+  if (publicColorOptions.length === 1) {
+    const colorImages = getColorImages(product, publicColorOptions[0]);
+    const galleryImages = uniqueImageUrls([...colorImages, ...complementaryImages]);
+    if (galleryImages.length > 0) return galleryImages;
+  }
+
+  const firstAvailableColorImages = getFirstAvailableColorImages(product);
+
+  if (product.imageUrl) return uniqueImageUrls([product.imageUrl, ...complementaryImages]);
+  if (firstAvailableColorImages.length > 0) return uniqueImageUrls([...firstAvailableColorImages, ...complementaryImages]);
+  if (complementaryImages.length > 0) return complementaryImages;
+  return [];
 }
 
 function getProductLink(product: Product) {
@@ -233,10 +384,10 @@ function Header({
         }`}
       >
         <div className="container mx-auto px-4">
-          <div className={`${isScrolled ? 'min-h-14' : 'min-h-16'} grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-2 transition-all duration-500`}>
+          <div className={`${isScrolled ? 'min-h-14' : 'min-h-16'} relative flex items-center justify-between gap-3 py-2 transition-all duration-500`}>
             <button
               onClick={() => setIsMenuOpen(true)}
-              className="group flex h-10 shrink-0 items-center gap-2 rounded-full px-1 text-[#3D3835] transition-colors hover:text-[#8B7355] sm:px-2"
+              className="group relative z-20 flex h-10 shrink-0 items-center gap-2 rounded-full px-1 text-[#3D3835] transition-colors hover:text-[#8B7355] sm:px-2"
               type="button"
               aria-label="Abrir menu"
             >
@@ -246,13 +397,13 @@ function Header({
 
             <button
               onClick={() => onPageChange('loja', 'Destaques')}
-              className={`min-w-0 justify-self-center truncate px-2 font-serif uppercase tracking-[0.2em] text-[#3D3835] transition-all hover:opacity-70 ${isScrolled ? 'text-xl' : 'text-2xl'}`}
+              className={`absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap px-2 text-center font-serif uppercase tracking-[0.2em] text-[#3D3835] transition-all hover:opacity-70 ${isScrolled ? 'text-xl' : 'text-2xl'}`}
               type="button"
             >
               VÖEL
             </button>
 
-            <div className="flex min-w-0 shrink-0 items-center justify-end gap-1 sm:gap-2">
+            <div className="relative z-20 flex min-w-0 shrink-0 items-center justify-end gap-1 sm:gap-2">
               <div className={`hidden items-center rounded-full bg-[#F5F1EC]/80 py-1.5 transition-all duration-500 ease-in-out md:flex ${showSearch ? 'w-64 px-3 opacity-100' : 'w-0 overflow-hidden px-0 opacity-0'}`}>
                 <Search size={14} className="min-w-[14px] text-[#9B8F7E]" />
                 <input
@@ -502,6 +653,10 @@ function ProductDetailsModal({
   onBuy,
 }: ProductDetailsModalProps) {
   const installmentText = getInstallmentText(product);
+  const publicColorOptions = useMemo(() => getPublicColorOptions(product), [product]);
+  const selectedPublicColor = useMemo(() => findPublicColorOption(product, selectedColor), [product, selectedColor]);
+  const publicSizeOptions = useMemo(() => getPublicSizeOptions(product), [product]);
+  const selectedPublicSize = useMemo(() => findPublicSizeOption(product, selectedSize), [product, selectedSize]);
   const galleryImages = useMemo(() => getProductGalleryImages(product, selectedColor), [product, selectedColor]);
   const hasMultipleImages = galleryImages.length > 1;
   const stockNotice = getStockNotice(product);
@@ -536,6 +691,28 @@ function ProductDetailsModal({
   }, [product.id]);
 
   useEffect(() => {
+    if (publicColorOptions.length === 1 && selectedColor !== publicColorOptions[0]) {
+      onColorChange(publicColorOptions[0]);
+      return;
+    }
+
+    if (selectedColor && !selectedPublicColor) {
+      onColorChange('');
+    }
+  }, [onColorChange, product.id, publicColorOptions, selectedColor, selectedPublicColor]);
+
+  useEffect(() => {
+    if (publicSizeOptions.length === 1 && selectedSize !== publicSizeOptions[0]) {
+      onSizeChange(publicSizeOptions[0]);
+      return;
+    }
+
+    if (selectedSize && !selectedPublicSize) {
+      onSizeChange('');
+    }
+  }, [onSizeChange, product.id, publicSizeOptions, selectedSize, selectedPublicSize]);
+
+  useEffect(() => {
     setQuantity(previous => Math.min(Math.max(1, previous), maxQuantity));
   }, [maxQuantity]);
 
@@ -564,12 +741,12 @@ function ProductDetailsModal({
 
   const handleColorSelect = (color: string) => {
     setPurchaseError('');
-    onColorChange(selectedColor === color ? '' : color);
+    onColorChange(selectedPublicColor === color ? '' : color);
   };
 
   const handleSizeSelect = (size: string) => {
     setPurchaseError('');
-    onSizeChange(selectedSize === size ? '' : size);
+    onSizeChange(selectedPublicSize === size ? '' : size);
   };
 
   const handleQuantityChange = (nextQuantity: number) => {
@@ -619,20 +796,24 @@ function ProductDetailsModal({
   };
 
   const handleBuyClick = () => {
-    if (!outOfStock && product.availableSizes.length > 0 && !selectedSize) {
-      setPurchaseError('Selecione um tamanho para continuar.');
+    const purchaseSize = selectedPublicSize || (publicSizeOptions.length === 1 ? publicSizeOptions[0] : '');
+
+    if (publicSizeOptions.length > 0 && !purchaseSize) {
+      setPurchaseError('Selecione um tamanho antes de continuar.');
       return;
     }
 
-    if (!outOfStock && product.availableColors.length > 0 && !selectedColor) {
+    const purchaseColor = selectedPublicColor || (publicColorOptions.length === 1 ? publicColorOptions[0] : '');
+
+    if (!outOfStock && publicColorOptions.length > 1 && !purchaseColor) {
       setPurchaseError('Selecione uma cor para continuar.');
       return;
     }
 
     setPurchaseError('');
     onBuy(product, {
-      size: selectedSize,
-      color: selectedColor,
+      size: purchaseSize,
+      color: purchaseColor,
       quantity,
       cep: shippingCep.trim(),
       paymentMode: canChooseInstallments && paymentMode === 'installments' ? 'installments' : 'cash',
@@ -771,16 +952,16 @@ function ProductDetailsModal({
               )}
             </div>
 
-            {product.availableColors.length > 0 && (
+            {publicColorOptions.length > 1 && (
               <div className="mb-7 space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#7A7067]">Cores disponíveis</p>
                 <div className="flex flex-wrap gap-2">
-                  {product.availableColors.map(color => (
+                  {publicColorOptions.map(color => (
                     <button
                       key={color}
                       onClick={() => handleColorSelect(color)}
                       className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.18em] transition-colors ${
-                        selectedColor === color
+                        selectedPublicColor === color
                           ? 'border-[#8B7355] bg-[#8B7355] text-white'
                           : 'border-[#D8D0C4] bg-white text-[#3D3835] hover:border-[#8B7355]'
                       }`}
@@ -793,16 +974,16 @@ function ProductDetailsModal({
               </div>
             )}
 
-            {product.availableSizes.length > 0 && (
+            {publicSizeOptions.length > 1 && (
               <div className="mb-7 space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#7A7067]">Tamanhos disponíveis</p>
                 <div className="flex flex-wrap gap-2">
-                  {product.availableSizes.map(size => (
+                  {publicSizeOptions.map(size => (
                     <button
                       key={size}
                       onClick={() => handleSizeSelect(size)}
                       className={`min-w-12 rounded-full border px-4 py-2 text-xs uppercase tracking-[0.18em] transition-colors ${
-                        selectedSize === size
+                        selectedPublicSize === size
                           ? 'border-[#8B7355] bg-[#8B7355] text-white'
                           : 'border-[#D8D0C4] bg-white text-[#3D3835] hover:border-[#8B7355]'
                       }`}
@@ -1142,9 +1323,12 @@ export default function PublicCatalog() {
   };
 
   const openProductDetails = (product: Product) => {
+    const publicColorOptions = getPublicColorOptions(product);
+    const publicSizeOptions = getPublicSizeOptions(product);
+
     setSelectedProduct(product);
-    setSelectedSize('');
-    setSelectedColor('');
+    setSelectedSize(publicSizeOptions.length === 1 ? publicSizeOptions[0] : '');
+    setSelectedColor(publicColorOptions.length === 1 ? publicColorOptions[0] : '');
   };
 
   const officialWhatsappNumber = normalizeWhatsappNumber(siteSettings.whatsappNumber);
@@ -1161,6 +1345,13 @@ export default function PublicCatalog() {
     const paymentDescription = isInstallmentPayment && installmentCount
       ? `Parcelado em ${installmentCount}x de aproximadamente ${formatCurrency(subtotal / installmentCount)}`
       : 'À vista';
+    const selectedPublicColor = options?.color ? findPublicColorOption(product, options.color) : '';
+    const publicSizeOptions = getPublicSizeOptions(product);
+    const selectedPublicSize = options?.size
+      ? findPublicSizeOption(product, options.size)
+      : publicSizeOptions.length === 1
+        ? publicSizeOptions[0]
+        : '';
     const finalMessage = outOfStock
       ? 'Poderia me avisar sobre disponibilidade?'
       : isInstallmentPayment
@@ -1174,8 +1365,8 @@ export default function PublicCatalog() {
       `Quantidade: ${quantity}`,
       `Subtotal: ${formatCurrency(subtotal)}`,
       product.category ? `Categoria: ${product.category}` : '',
-      options?.color ? `Cor selecionada: ${options.color}` : '',
-      options?.size ? `Tamanho selecionado: ${options.size}` : '',
+      selectedPublicColor ? `Cor selecionada: ${selectedPublicColor}` : '',
+      selectedPublicSize ? `Tamanho: ${selectedPublicSize}` : '',
       product.sku ? `SKU: ${product.sku}` : '',
       !outOfStock ? `Forma de pagamento desejada: ${paymentDescription}` : '',
       options?.cep ? `CEP: ${options.cep}` : '',
@@ -1324,11 +1515,11 @@ export default function PublicCatalog() {
                                 event.stopPropagation();
                                 handleBannerAction(banner);
                               }}
-                              className="group mt-1 inline-flex max-w-full items-center justify-center gap-3 rounded-full bg-white/88 px-6 py-3 text-[10px] font-bold uppercase text-[#3D3835] shadow-lg backdrop-blur-md transition-all duration-500 hover:bg-[#3D3835]/90 hover:text-white sm:px-8 md:px-10 md:py-4 md:text-xs"
+                              className="group mt-1 inline-flex max-w-full items-center justify-center gap-3 rounded-full bg-white/88 px-6 py-3 text-[10px] font-bold uppercase text-[#3D3835] shadow-lg backdrop-blur-md transition-all duration-500 hover:-translate-y-0.5 hover:bg-[#3D3835]/90 hover:text-white hover:shadow-[0_18px_35px_rgba(31,27,24,0.22)] active:translate-y-0 sm:px-8 md:px-10 md:py-4 md:text-xs"
                               type="button"
                             >
                               <span className="truncate">{banner.buttonLabel?.trim() || 'Ver vitrine'}</span>
-                              <ArrowRight size={14} className="shrink-0 transition-transform group-hover:translate-x-1" />
+                              <ArrowRight size={14} className="shrink-0 transition-transform duration-500 group-hover:translate-x-1.5" />
                             </button>
                           )}
                         </div>
