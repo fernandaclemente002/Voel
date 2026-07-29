@@ -24,7 +24,7 @@ import {
   uploadProductImage,
   uploadSiteImage,
 } from '../services/catalogService';
-import type { Category, CategoryInput, Product, ProductColorImages, ProductInput, ProductTagInput, ProductTagRecord, SiteBanner, SiteBannerContentPosition, SiteBannerImageFit, SiteBannerInput, SiteBannerTargetType, SiteSettingsInput } from '../types/catalog';
+import type { Category, CategoryInput, Product, ProductColorImageValue, ProductColorImages, ProductInput, ProductTagInput, ProductTagRecord, SiteBanner, SiteBannerContentPosition, SiteBannerImageFit, SiteBannerInput, SiteBannerTargetType, SiteSettingsInput } from '../types/catalog';
 import { defaultSiteSettings } from '../types/catalog';
 
 const emptyCategoryForm: CategoryInput = {
@@ -53,7 +53,7 @@ const emptyProductForm: ProductInput = {
   isActive: true,
 };
 
-const commonSizes = ['PP', 'P', 'M', 'G', 'GG', 'XG', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', 'Único'];
+const commonSizes = ['PP', 'P', 'M', 'G', 'GG', 'XG', '34', '36', '38', '40', '42', 'Único'];
 const lowStockLimitStorageKey = 'voel:admin-low-stock-limit';
 const fieldClass = 'w-full rounded-lg border border-[#D8D0C4] px-3 py-3 text-base outline-none transition-colors focus:border-[#8B7355] sm:text-sm';
 const selectClass = `${fieldClass} bg-white`;
@@ -70,7 +70,10 @@ type ColorImageRow = {
   id: string;
   color: string;
   images: ColorImageItem[];
+  detailImages: ColorImageItem[];
 };
+
+type ColorImageKind = 'images' | 'detailImages';
 
 type ActiveAdminTab = 'products' | 'categories' | 'tags' | 'customization';
 
@@ -106,6 +109,35 @@ const emptyTagForm: ProductTagInput = {
   sortOrder: 0,
 };
 
+const complementaryImageGroupLabels = new Set([
+  'costas',
+  'detalhe',
+  'detalhe da peca',
+  'detalhe peca',
+  'detalhes',
+  'detalhes da peca',
+  'detalhes peca',
+  'details',
+  'foto costas',
+  'foto da lateral',
+  'foto de costas',
+  'foto de detalhe',
+  'foto de detalhes',
+  'foto de frente',
+  'foto detalhe',
+  'foto lateral',
+  'fotos costas',
+  'fotos de costas',
+  'fotos de detalhe',
+  'fotos de detalhes',
+  'fotos de frente',
+  'fotos detalhe',
+  'fotos extras',
+  'frente',
+  'imagens extras',
+  'lateral',
+]);
+
 function slugify(value: string) {
   return value
     .normalize('NFD')
@@ -129,6 +161,26 @@ function normalizeComparable(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+}
+
+function normalizeSizeLabel(value: string) {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+
+  const comparable = normalizeComparable(trimmed);
+  if (comparable === 'unico' || comparable === 'unica') return 'Único';
+  return /^[a-z]+$/i.test(trimmed) ? trimmed.toUpperCase() : trimmed;
+}
+
+function normalizeImageGroupLabel(value: string) {
+  return normalizeComparable(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isComplementaryImageGroupName(value: string) {
+  return complementaryImageGroupLabels.has(normalizeImageGroupLabel(value));
 }
 
 function parsePriceInput(value: string) {
@@ -167,6 +219,16 @@ function uniqueTextValues(values: string[]) {
 
     const alreadyExists = uniqueValues.some(existing => normalizeComparable(existing) === normalizeComparable(trimmed));
     return alreadyExists ? uniqueValues : [...uniqueValues, trimmed];
+  }, []);
+}
+
+function uniqueSizeValues(values: string[]) {
+  return values.reduce<string[]>((uniqueValues, value) => {
+    const normalizedSize = normalizeSizeLabel(value);
+    if (!normalizedSize) return uniqueValues;
+
+    const alreadyExists = uniqueValues.some(existing => normalizeComparable(existing) === normalizeComparable(normalizedSize));
+    return alreadyExists ? uniqueValues : [...uniqueValues, normalizedSize];
   }, []);
 }
 
@@ -288,15 +350,16 @@ function createColorImageItem(imageUrl = '', file: File | null = null): ColorIma
   };
 }
 
-function createColorImageRow(color = '', imageUrls: string[] = []): ColorImageRow {
+function createColorImageRow(color = '', imageUrls: string[] = [], detailImageUrls: string[] = []): ColorImageRow {
   return {
     id: createId(),
     color,
     images: imageUrls.map(imageUrl => createColorImageItem(imageUrl)),
+    detailImages: detailImageUrls.map(imageUrl => createColorImageItem(imageUrl)),
   };
 }
 
-function getColorImageUrls(imageValue: ProductColorImages[string] | undefined) {
+function normalizeColorImageUrls(imageValue: unknown) {
   if (typeof imageValue === 'string') {
     const imageUrl = imageValue.trim();
     return imageUrl ? [imageUrl] : [];
@@ -305,25 +368,72 @@ function getColorImageUrls(imageValue: ProductColorImages[string] | undefined) {
   if (!Array.isArray(imageValue)) return [];
 
   return imageValue.reduce<string[]>((imageUrls, item) => {
-    const imageUrl = item.trim();
+    const imageUrl = typeof item === 'string' ? item.trim() : '';
     if (!imageUrl || imageUrls.includes(imageUrl)) return imageUrls;
     return [...imageUrls, imageUrl];
   }, []);
 }
 
-function findColorImageUrls(colorImages: ProductColorImages, color: string) {
+function isStructuredColorImageValue(imageValue: ProductColorImageValue | undefined): imageValue is Exclude<ProductColorImageValue, string | string[]> {
+  return Boolean(imageValue && typeof imageValue === 'object' && !Array.isArray(imageValue));
+}
+
+function getColorMainImageUrls(imageValue: ProductColorImages[string] | undefined) {
+  if (isStructuredColorImageValue(imageValue)) {
+    return normalizeColorImageUrls(imageValue.images);
+  }
+
+  return normalizeColorImageUrls(imageValue);
+}
+
+function getColorDetailImageUrls(imageValue: ProductColorImages[string] | undefined) {
+  if (!isStructuredColorImageValue(imageValue)) return [];
+  return normalizeColorImageUrls(imageValue.details);
+}
+
+function getColorImageUrls(imageValue: ProductColorImages[string] | undefined) {
+  return [...getColorMainImageUrls(imageValue), ...getColorDetailImageUrls(imageValue)];
+}
+
+function findColorImageValue(colorImages: ProductColorImages, color: string) {
   const normalizedColor = normalizeComparable(color);
-  const matchedImageValue = Object.entries(colorImages).find(([imageColor]) => normalizeComparable(imageColor) === normalizedColor)?.[1];
-  return getColorImageUrls(matchedImageValue);
+  return Object.entries(colorImages).find(([imageColor]) => normalizeComparable(imageColor) === normalizedColor)?.[1];
+}
+
+function getLegacyGeneralDetailImages(product: Product) {
+  return Object.entries(product.colorImages).flatMap(([groupName, imageValue]) => (
+    isComplementaryImageGroupName(groupName) ? getColorImageUrls(imageValue) : []
+  ));
 }
 
 function productColorRows(product: Product) {
   const colors = uniqueTextValues([
     ...product.availableColors,
     ...Object.keys(product.colorImages),
-  ]);
+  ]).filter(color => !isComplementaryImageGroupName(color));
 
-  return colors.map(color => createColorImageRow(color, findColorImageUrls(product.colorImages, color)));
+  const legacyGeneralDetailImages = getLegacyGeneralDetailImages(product);
+
+  return colors.map(color => {
+    const imageValue = findColorImageValue(product.colorImages, color);
+    const detailImageUrls = getColorDetailImageUrls(imageValue);
+
+    return createColorImageRow(
+      color,
+      getColorMainImageUrls(imageValue),
+      colors.length === 1 ? uniqueTextValues([...detailImageUrls, ...legacyGeneralDetailImages]) : detailImageUrls
+    );
+  });
+}
+
+function productLegacyGeneralDetailItems(product: Product) {
+  const colors = uniqueTextValues([
+    ...product.availableColors,
+    ...Object.keys(product.colorImages),
+  ]).filter(color => !isComplementaryImageGroupName(color));
+
+  if (colors.length === 1) return [];
+  return getLegacyGeneralDetailImages(product).map(imageUrl => createColorImageItem(imageUrl));
 }
 
 function getFirstColorImageUrl(colorImages: ProductColorImages) {
@@ -342,7 +452,10 @@ function revokeColorImageItem(image: ColorImageItem) {
 }
 
 function revokeColorImageRows(rows: ColorImageRow[]) {
-  rows.forEach(row => row.images.forEach(revokeColorImageItem));
+  rows.forEach(row => {
+    row.images.forEach(revokeColorImageItem);
+    row.detailImages.forEach(revokeColorImageItem);
+  });
 }
 
 function createBannerForm(banner?: SiteBanner, sortOrder = 0): BannerForm {
@@ -431,7 +544,9 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const [customSizeText, setCustomSizeText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [colorImageRows, setColorImageRows] = useState<ColorImageRow[]>([]);
+  const [legacyGeneralDetailImages, setLegacyGeneralDetailImages] = useState<ColorImageItem[]>([]);
   const colorImageRowsRef = useRef<ColorImageRow[]>([]);
+  const legacyGeneralDetailImagesRef = useRef<ColorImageItem[]>([]);
   const siteBannersRef = useRef<BannerForm[]>([]);
   const [lowStockLimitText, setLowStockLimitText] = useState(() => {
     try {
@@ -484,10 +599,16 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   }, [colorImageRows]);
 
   useEffect(() => {
+    legacyGeneralDetailImagesRef.current = legacyGeneralDetailImages;
+  }, [legacyGeneralDetailImages]);
+
+  useEffect(() => {
     siteBannersRef.current = siteBanners;
   }, [siteBanners]);
 
   useEffect(() => () => revokeColorImageRows(colorImageRowsRef.current), []);
+
+  useEffect(() => () => legacyGeneralDetailImagesRef.current.forEach(revokeColorImageItem), []);
 
   useEffect(() => () => revokeBannerForms(siteBannersRef.current), []);
 
@@ -513,6 +634,8 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setImageFile(null);
     revokeColorImageRows(colorImageRowsRef.current);
     setColorImageRows([]);
+    legacyGeneralDetailImagesRef.current.forEach(revokeColorImageItem);
+    setLegacyGeneralDetailImages([]);
   };
 
   const handleCategoryNameChange = (name: string) => {
@@ -524,11 +647,14 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   };
 
   const handleToggleSize = (size: string) => {
+    const normalizedSize = normalizeSizeLabel(size);
+    if (!normalizedSize) return;
+
     setSelectedSizes(previous => {
-      const isSelected = previous.some(selectedSize => normalizeComparable(selectedSize) === normalizeComparable(size));
+      const isSelected = previous.some(selectedSize => normalizeComparable(selectedSize) === normalizeComparable(normalizedSize));
       return isSelected
-        ? previous.filter(selectedSize => normalizeComparable(selectedSize) !== normalizeComparable(size))
-        : uniqueTextValues([...previous, size]);
+        ? previous.filter(selectedSize => normalizeComparable(selectedSize) !== normalizeComparable(normalizedSize))
+        : uniqueSizeValues([...previous, normalizedSize]);
     });
   };
 
@@ -561,10 +687,10 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   };
 
   const handleAddCustomSize = () => {
-    const customSize = customSizeText.trim();
+    const customSize = normalizeSizeLabel(customSizeText);
     if (!customSize) return;
 
-    setSelectedSizes(previous => uniqueTextValues([...previous, customSize]));
+    setSelectedSizes(previous => uniqueSizeValues([...previous, customSize]));
     setCustomSizeText('');
   };
 
@@ -624,6 +750,12 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
         throw new Error('installments-required');
       }
 
+      const availableSizes = uniqueSizeValues(selectedSizes);
+
+      if (availableSizes.length === 0) {
+        throw new Error('size-required');
+      }
+
       let imageUrl = productForm.imageUrl;
       let imagePath = productForm.imagePath;
 
@@ -638,13 +770,17 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
 
       for (const row of colorImageRows) {
         const color = row.color.trim();
-        const rowHasImage = row.images.length > 0;
+        const rowHasImage = row.images.length > 0 || row.detailImages.length > 0;
 
         if (!color && rowHasImage) {
           throw new Error('color-name-required');
         }
 
         if (!color) continue;
+
+        if (isComplementaryImageGroupName(color)) {
+          throw new Error('color-name-invalid');
+        }
 
         const existingColor = availableColors.find(currentColor => normalizeComparable(currentColor) === normalizeComparable(color));
         const colorKey = existingColor ?? color;
@@ -654,6 +790,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
         }
 
         const rowImageUrls: string[] = [];
+        const rowDetailImageUrls: string[] = [];
 
         for (const image of row.images) {
           let colorImageUrl = image.imageUrl.trim();
@@ -668,8 +805,23 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
           }
         }
 
-        if (rowImageUrls.length > 0) {
-          const mergedImageUrls = [...getColorImageUrls(colorImages[colorKey])];
+        for (const image of row.detailImages) {
+          let detailImageUrl = image.imageUrl.trim();
+
+          if (image.file) {
+            const uploadedImage = await uploadProductImage(image.file);
+            detailImageUrl = uploadedImage.imageUrl;
+          }
+
+          if (detailImageUrl && !rowDetailImageUrls.includes(detailImageUrl)) {
+            rowDetailImageUrls.push(detailImageUrl);
+          }
+        }
+
+        if (rowImageUrls.length > 0 || rowDetailImageUrls.length > 0) {
+          const previousValue = colorImages[colorKey];
+          const mergedImageUrls = [...getColorMainImageUrls(previousValue)];
+          const mergedDetailImageUrls = [...getColorDetailImageUrls(previousValue)];
 
           rowImageUrls.forEach(colorImageUrl => {
             if (!mergedImageUrls.includes(colorImageUrl)) {
@@ -677,8 +829,25 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
             }
           });
 
-          colorImages[colorKey] = mergedImageUrls.length === 1 ? mergedImageUrls[0] : mergedImageUrls;
+          rowDetailImageUrls.forEach(detailImageUrl => {
+            if (!mergedDetailImageUrls.includes(detailImageUrl)) {
+              mergedDetailImageUrls.push(detailImageUrl);
+            }
+          });
+
+          colorImages[colorKey] = {
+            images: mergedImageUrls,
+            details: mergedDetailImageUrls,
+          };
         }
+      }
+
+      const legacyGeneralDetailUrls = legacyGeneralDetailImages
+        .map(image => image.imageUrl.trim())
+        .filter((imageUrl, index, imageUrls) => imageUrl && imageUrls.indexOf(imageUrl) === index);
+
+      if (legacyGeneralDetailUrls.length > 0) {
+        colorImages['Detalhes da peça'] = legacyGeneralDetailUrls.length === 1 ? legacyGeneralDetailUrls[0] : legacyGeneralDetailUrls;
       }
 
       if (!imageUrl) {
@@ -702,7 +871,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
           price,
           stockQuantity,
           maxInstallments,
-          availableSizes: uniqueTextValues(selectedSizes),
+          availableSizes,
           availableColors,
           colorImages,
           sku: productForm.sku?.trim() || null,
@@ -725,10 +894,14 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
         setError('Informe um estoque válido, com número inteiro maior ou igual a zero.');
       } else if (typedError.message === 'installments-required') {
         setError('Informe uma quantidade de parcelas válida, com número inteiro maior ou igual a 1.');
+      } else if (typedError.message === 'size-required') {
+        setError('Informe pelo menos um tamanho disponível para a peça.');
       } else if (typedError.message === 'image-required') {
         setError('Envie uma imagem principal ou uma imagem em alguma variação de cor.');
       } else if (typedError.message === 'color-name-required') {
         setError('Informe o nome da cor nas variações que têm imagem.');
+      } else if (typedError.message === 'color-name-invalid') {
+        setError('Cadastre apenas cores reais no campo de cor. Use a área de detalhes da peça para fotos de costas, frente, tecido ou acabamento.');
       } else {
         setError('Não foi possível salvar o produto.');
       }
@@ -780,6 +953,8 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     const editableProductTags = (product.tags?.length ? product.tags : product.tag !== 'Nenhuma' ? [product.tag] : [])
       .filter(productTag => activePersistedProductTags.some(tag => normalizeComparable(tag.name) === normalizeComparable(productTag)));
 
+    setMessage('');
+    setError('');
     setActiveTab('products');
     setEditingProductId(product.id);
     setProductForm({
@@ -803,11 +978,18 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setPriceText(formatPriceInput(product.price));
     setStockText(String(product.stockQuantity ?? 0));
     setInstallmentsText(String(Math.max(1, Number(product.maxInstallments) || 1)));
-    setSelectedSizes(uniqueTextValues(product.availableSizes));
+    const editableSizes = uniqueSizeValues(product.availableSizes);
+    setSelectedSizes(editableSizes);
+    if (editableSizes.length === 0) {
+      setMessage('');
+      setError('Este produto está sem tamanho. Cadastre pelo menos um tamanho antes de salvar.');
+    }
     setCustomSizeText('');
     setImageFile(null);
     revokeColorImageRows(colorImageRowsRef.current);
+    legacyGeneralDetailImagesRef.current.forEach(revokeColorImageItem);
     setColorImageRows(productColorRows(product));
+    setLegacyGeneralDetailImages(productLegacyGeneralDetailItems(product));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -819,22 +1001,22 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setColorImageRows(previous => previous.map(row => row.id === rowId ? { ...row, ...changes } : row));
   };
 
-  const handleAddColorImages = (rowId: string, files: FileList | null) => {
+  const handleAddColorImages = (rowId: string, kind: ColorImageKind, files: FileList | null) => {
     const selectedFiles = Array.from(files ?? []);
     if (selectedFiles.length === 0) return;
 
     const nextImages = selectedFiles.map(file => createColorImageItem('', file));
     setColorImageRows(previous => previous.map(row => (
       row.id === rowId
-        ? { ...row, images: [...row.images, ...nextImages] }
+        ? { ...row, [kind]: [...row[kind], ...nextImages] }
         : row
     )));
   };
 
-  const handleRemoveColorImage = (rowId: string, imageId: string) => {
+  const handleRemoveColorImage = (rowId: string, kind: ColorImageKind, imageId: string) => {
     const imageToRemove = colorImageRows
       .find(row => row.id === rowId)
-      ?.images.find(image => image.id === imageId);
+      ?.[kind].find(image => image.id === imageId);
 
     if (imageToRemove) {
       revokeColorImageItem(imageToRemove);
@@ -842,19 +1024,19 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
 
     setColorImageRows(previous => previous.map(row => (
       row.id === rowId
-        ? { ...row, images: row.images.filter(image => image.id !== imageId) }
+        ? { ...row, [kind]: row[kind].filter(image => image.id !== imageId) }
         : row
     )));
   };
 
-  const handleMoveColorImage = (rowId: string, imageId: string, direction: -1 | 1) => {
+  const handleMoveColorImage = (rowId: string, kind: ColorImageKind, imageId: string, direction: -1 | 1) => {
     setColorImageRows(previous => previous.map(row => {
       if (row.id !== rowId) return row;
 
-      const imageIndex = row.images.findIndex(image => image.id === imageId);
+      const imageIndex = row[kind].findIndex(image => image.id === imageId);
       return {
         ...row,
-        images: moveArrayItem(row.images, imageIndex, direction),
+        [kind]: moveArrayItem(row[kind], imageIndex, direction),
       };
     }));
   };
@@ -1597,6 +1779,9 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                 </FormBlock>
 
                 <FormBlock title="Tamanhos disponíveis">
+                  <p className="text-xs leading-relaxed text-[#7A7067]">
+                    Selecione pelo menos um tamanho. Use as opções rápidas ou adicione um tamanho personalizado, como Único.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {commonSizes.map(size => {
                       const isSelected = selectedSizes.some(selectedSize => normalizeComparable(selectedSize) === normalizeComparable(size));
@@ -1658,7 +1843,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                 <FormBlock title="Variações de cor">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs leading-relaxed text-[#7A7067]">
-                      As cores da vitrine serão criadas a partir destas variações.
+                      Cadastre aqui apenas cores reais da peça. Dentro de cada cor, adicione as fotos principais e, se quiser, fotos de detalhes como costas, tecido, acabamento e botões.
                     </p>
                     <button
                       onClick={handleAddColorImageRow}
@@ -1676,15 +1861,15 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                   ) : (
                     <div className="space-y-4">
                       {colorImageRows.map(row => (
-                        <div key={row.id} className="space-y-3 border-t border-[#E5E0D8] pt-4 first:border-t-0 first:pt-0">
+                        <div key={row.id} className="space-y-5 rounded-lg border border-[#E5E0D8] bg-[#FDFCF7] p-4">
                           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                             <label className="block space-y-1.5">
-                              <span className={labelClass}>Nome da cor</span>
+                              <span className={labelClass}>Cor da peça</span>
                               <input
                                 value={row.color}
                                 onChange={(event) => handleUpdateColorImageRow(row.id, { color: event.target.value })}
                                 className={fieldClass}
-                                placeholder="Vermelho"
+                                placeholder="Preto"
                               />
                             </label>
 
@@ -1693,22 +1878,22 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                               className="flex min-h-12 items-center justify-center gap-2 self-end rounded-lg border border-red-200 px-4 text-xs font-bold uppercase tracking-[0.16em] text-red-700 transition-colors hover:bg-red-50"
                               type="button"
                             >
-                              <Trash2 size={14} /> Remover
+                              <Trash2 size={14} /> Remover cor
                             </button>
                           </div>
 
-                          <div className="space-y-3">
+                          <div className="space-y-3 rounded-lg border border-[#E5E0D8] bg-white p-3">
                             <label className="block space-y-1.5">
-                              <span className={labelClass}>Imagens da cor</span>
+                              <span className={labelClass}>Imagens principais desta cor</span>
                               <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-3 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
-                                <Upload size={15} /> {row.images.length > 0 ? 'Adicionar mais imagens' : 'Adicionar imagens'}
+                                <Upload size={15} /> {row.images.length > 0 ? 'Adicionar mais imagens da cor' : 'Adicionar imagens da cor'}
                                 <input
                                   type="file"
                                   accept="image/*"
                                   multiple
                                   className="hidden"
                                   onChange={(event) => {
-                                    handleAddColorImages(row.id, event.target.files);
+                                    handleAddColorImages(row.id, 'images', event.target.files);
                                     event.currentTarget.value = '';
                                   }}
                                 />
@@ -1719,58 +1904,159 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                               <div className="space-y-2">
                                 <p className="text-xs leading-relaxed text-[#9B8F7E]">Use Subir/Descer para ordenar. A primeira imagem será a principal da cor.</p>
                                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {row.images.map((image, imageIndex) => (
-                                  <div key={image.id} className="group relative overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
-                                    <img
-                                      src={image.previewUrl}
-                                      alt={`${row.color || 'Cor'} ${imageIndex + 1}`}
-                                      className="aspect-square w-full object-cover"
-                                    />
-                                    <div className="absolute left-2 top-2 flex gap-1">
-                                      <button
-                                        onClick={() => handleMoveColorImage(row.id, image.id, -1)}
-                                        disabled={imageIndex === 0}
-                                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-[#F5F1EC] disabled:cursor-not-allowed disabled:opacity-40"
-                                        type="button"
-                                        aria-label="Subir imagem"
-                                      >
-                                        <ArrowUp size={13} />
-                                      </button>
-                                      <button
-                                        onClick={() => handleMoveColorImage(row.id, image.id, 1)}
-                                        disabled={imageIndex === row.images.length - 1}
-                                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-[#F5F1EC] disabled:cursor-not-allowed disabled:opacity-40"
-                                        type="button"
-                                        aria-label="Descer imagem"
-                                      >
-                                        <ArrowDown size={13} />
-                                      </button>
-                                    </div>
-                                    <button
-                                      onClick={() => handleRemoveColorImage(row.id, image.id)}
-                                      className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-700"
-                                      type="button"
-                                      aria-label="Remover imagem"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                    {image.file && (
-                                      <div className="absolute inset-x-0 bottom-0 bg-[#1F1B18]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                                        Nova
+                                  {row.images.map((image, imageIndex) => (
+                                    <div key={image.id} className="group relative overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
+                                      <img
+                                        src={image.previewUrl}
+                                        alt={`${row.color || 'Cor'} imagem principal ${imageIndex + 1}`}
+                                        className="aspect-square w-full object-cover"
+                                      />
+                                      <div className="absolute left-2 top-2 flex gap-1">
+                                        <button
+                                          onClick={() => handleMoveColorImage(row.id, 'images', image.id, -1)}
+                                          disabled={imageIndex === 0}
+                                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-[#F5F1EC] disabled:cursor-not-allowed disabled:opacity-40"
+                                          type="button"
+                                          aria-label="Subir imagem"
+                                        >
+                                          <ArrowUp size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleMoveColorImage(row.id, 'images', image.id, 1)}
+                                          disabled={imageIndex === row.images.length - 1}
+                                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-[#F5F1EC] disabled:cursor-not-allowed disabled:opacity-40"
+                                          type="button"
+                                          aria-label="Descer imagem"
+                                        >
+                                          <ArrowDown size={13} />
+                                        </button>
                                       </div>
-                                    )}
-                                  </div>
-                                ))}
+                                      <button
+                                        onClick={() => handleRemoveColorImage(row.id, 'images', image.id)}
+                                        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-700"
+                                        type="button"
+                                        aria-label="Remover imagem"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                      {image.file && (
+                                        <div className="absolute inset-x-0 bottom-0 bg-[#1F1B18]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                                          Nova
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             ) : (
                               <p className="rounded-lg border border-dashed border-[#D8D0C4] px-3 py-3 text-xs text-[#9B8F7E]">
-                                Sem imagem própria, usa a imagem principal.
+                                Sem imagem principal desta cor.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="space-y-3 rounded-lg border border-[#E5E0D8] bg-white p-3">
+                            <div className="space-y-1">
+                              <p className={labelClass}>Detalhes da peça nesta cor (opcional)</p>
+                              <p className="text-xs leading-relaxed text-[#9B8F7E]">
+                                Use para fotos de costas, tecido, zíper, botão, acabamento ou detalhes específicos desta cor.
+                              </p>
+                            </div>
+
+                            <label className="block">
+                              <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-3 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
+                                <Upload size={15} /> {row.detailImages.length > 0 ? 'Adicionar mais detalhes da peça' : 'Adicionar detalhes da peça'}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    handleAddColorImages(row.id, 'detailImages', event.target.files);
+                                    event.currentTarget.value = '';
+                                  }}
+                                />
+                              </span>
+                            </label>
+
+                            {row.detailImages.length > 0 ? (
+                              <div className="space-y-2">
+                                <p className="text-xs leading-relaxed text-[#9B8F7E]">Os detalhes aparecem depois das imagens principais na galeria pública.</p>
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                  {row.detailImages.map((image, imageIndex) => (
+                                    <div key={image.id} className="group relative overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#FDFCF7]">
+                                      <img
+                                        src={image.previewUrl}
+                                        alt={`${row.color || 'Cor'} detalhe ${imageIndex + 1}`}
+                                        className="aspect-square w-full object-cover"
+                                      />
+                                      <div className="absolute left-2 top-2 flex gap-1">
+                                        <button
+                                          onClick={() => handleMoveColorImage(row.id, 'detailImages', image.id, -1)}
+                                          disabled={imageIndex === 0}
+                                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-[#F5F1EC] disabled:cursor-not-allowed disabled:opacity-40"
+                                          type="button"
+                                          aria-label="Subir detalhe"
+                                        >
+                                          <ArrowUp size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleMoveColorImage(row.id, 'detailImages', image.id, 1)}
+                                          disabled={imageIndex === row.detailImages.length - 1}
+                                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-[#F5F1EC] disabled:cursor-not-allowed disabled:opacity-40"
+                                          type="button"
+                                          aria-label="Descer detalhe"
+                                        >
+                                          <ArrowDown size={13} />
+                                        </button>
+                                      </div>
+                                      <button
+                                        onClick={() => handleRemoveColorImage(row.id, 'detailImages', image.id)}
+                                        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[#3D3835] shadow-sm backdrop-blur-sm transition-colors hover:bg-red-50 hover:text-red-700"
+                                        type="button"
+                                        aria-label="Remover detalhe"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                      {image.file && (
+                                        <div className="absolute inset-x-0 bottom-0 bg-[#1F1B18]/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                                          Nova
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="rounded-lg border border-dashed border-[#D8D0C4] px-3 py-3 text-xs text-[#9B8F7E]">
+                                Nenhum detalhe específico desta cor.
                               </p>
                             )}
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {legacyGeneralDetailImages.length > 0 && (
+                    <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-amber-800">Detalhes gerais antigos</p>
+                        <p className="text-xs leading-relaxed text-amber-900/80">
+                          Estas imagens vieram de um cadastro antigo como "Detalhes da peça". Elas continuam salvas e aparecem na galeria, mas não aparecem como cor para o cliente.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {legacyGeneralDetailImages.map((image, imageIndex) => (
+                          <div key={image.id} className="overflow-hidden rounded-lg border border-amber-200 bg-white">
+                            <img
+                              src={image.previewUrl}
+                              alt={`Detalhe geral antigo ${imageIndex + 1}`}
+                              className="aspect-square w-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </FormBlock>
