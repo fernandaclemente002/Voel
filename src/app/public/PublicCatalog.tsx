@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ChangeEvent, MouseEvent } from 'react';
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, Instagram, Mail, Menu, MessageCircle, Search, Truck, X, Zap } from 'lucide-react';
+import OurStory from '../components/OurStory';
 import { fetchPublicCatalog } from '../services/catalogService';
 import type { Category, Product, SiteBanner, SiteSettings } from '../types/catalog';
 import { defaultSiteSettings } from '../types/catalog';
@@ -1322,6 +1323,10 @@ export default function PublicCatalog() {
     }, 0);
   };
 
+  const handleStoryViewCollection = () => {
+    handleBannerAction();
+  };
+
   const openProductDetails = (product: Product) => {
     const publicColorOptions = getPublicColorOptions(product);
     const publicSizeOptions = getPublicSizeOptions(product);
@@ -1733,30 +1738,7 @@ export default function PublicCatalog() {
             </div>
           </>
         ) : (
-          <section className="container mx-auto max-w-6xl px-4 py-32">
-            <div className="grid items-center gap-20 md:grid-cols-2">
-              <div className="relative aspect-[4/5] overflow-hidden rounded-lg shadow-xl">
-                <ImageWithFallback
-                  src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=800"
-                  alt="Sobre VÖEL"
-                  className="h-full w-full object-cover"
-                />
-                <div className="absolute inset-0 bg-[#8B7355]/5" />
-              </div>
-              <div className="space-y-8">
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-[#8B7355]">Nossa História</span>
-                  <h2 className="font-serif text-4xl uppercase tracking-[0.2em]">O conceito VÖEL</h2>
-                </div>
-                <div className="space-y-6 text-sm font-light leading-relaxed tracking-wide text-[#7A7067] sm:text-base">
-                  <p>A VÖEL nasceu do desejo de criar uma moda que celebra a essência feminina através de peças atemporais, fluidas e sofisticadas.</p>
-                  <p>Cada detalhe, da escolha das fibras naturais ao acabamento manual, é pensado para a mulher que valoriza o conforto sem abrir mão da elegância minimalista.</p>
-                  <p>O nosso compromisso é com a moda consciente: poucas peças, altíssima qualidade e um design que transcende as estações passageiras.</p>
-                  <p className="border-t border-[#E5E0D8]/40 pt-6 font-serif text-lg italic text-[#8B7355]">"Moda que transcende tendências e celebra a sua essência."</p>
-                </div>
-              </div>
-            </div>
-          </section>
+          <OurStory onViewCollection={handleStoryViewCollection} />
         )}
       </main>
 
