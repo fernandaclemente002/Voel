@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ChangeEvent, MouseEvent } from 'react';
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, Instagram, Mail, Menu, MessageCircle, Search, Truck, X, Zap } from 'lucide-react';
 import OurStory from '../components/OurStory';
 import { fetchPublicCatalog } from '../services/catalogService';
 import type { Category, Product, SiteBanner, SiteSettings } from '../types/catalog';
 import { defaultSiteSettings } from '../types/catalog';
+import './PublicCatalogMotion.css';
 
 const favoriteStorageKey = 'voel:favorites';
 const publicLowStockLimit = 3;
@@ -25,6 +26,13 @@ type PurchaseOptions = {
   paymentMode?: PaymentMode;
   installments?: number;
 };
+
+type ProductModalOrigin = {
+  x: string;
+  y: string;
+};
+
+type GridMotionPhase = 'idle' | 'leaving' | 'entering';
 
 const bannerIntervalMs = 6000;
 const complementaryImageGroupLabels = new Set([
@@ -498,7 +506,7 @@ function Header({
                       <button
                         key={item.value}
                         onClick={() => handleCategoryClick(item.value)}
-                        className={`block w-full text-left text-sm uppercase tracking-[0.3em] transition-all hover:translate-x-2 ${isSelected ? 'font-bold text-[#8B7355]' : 'text-[#3D3835] hover:text-[#8B7355]'}`}
+                        className={`voel-menu-item ${isSelected ? 'voel-menu-item--active font-bold text-[#8B7355]' : 'text-[#3D3835] hover:text-[#8B7355]'} block w-full text-left text-sm uppercase tracking-[0.3em] transition-all hover:translate-x-2`}
                         type="button"
                       >
                         {item.label}
@@ -513,7 +521,7 @@ function Header({
                 <div className="flex flex-col gap-6">
                   <button
                     onClick={() => { onPageChange('sobre'); setIsMenuOpen(false); }}
-                    className={`block w-full text-left text-sm uppercase tracking-[0.3em] transition-all hover:translate-x-2 ${activePage === 'sobre' ? 'font-bold text-[#8B7355]' : 'text-[#3D3835] hover:text-[#8B7355]'}`}
+                    className={`voel-menu-item ${activePage === 'sobre' ? 'voel-menu-item--active font-bold text-[#8B7355]' : 'text-[#3D3835] hover:text-[#8B7355]'} block w-full text-left text-sm uppercase tracking-[0.3em] transition-all hover:translate-x-2`}
                     type="button"
                   >
                     Nossa História
@@ -633,6 +641,9 @@ function CatalogFooter({ onWhatsAppChat, siteSettings }: { onWhatsAppChat: () =>
 interface ProductDetailsModalProps {
   product: Product;
   isFavorite: boolean;
+  isClosing: boolean;
+  favoriteMotionId: string;
+  motionOrigin: ProductModalOrigin;
   selectedSize: string;
   selectedColor: string;
   onClose: () => void;
@@ -645,6 +656,9 @@ interface ProductDetailsModalProps {
 function ProductDetailsModal({
   product,
   isFavorite,
+  isClosing,
+  favoriteMotionId,
+  motionOrigin,
   selectedSize,
   selectedColor,
   onClose,
@@ -823,10 +837,16 @@ function ProductDetailsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 px-0 backdrop-blur-sm sm:items-center sm:px-4">
-      <button className="absolute inset-0 cursor-default" onClick={onClose} type="button" aria-label="Fechar detalhe" />
+    <div
+      className={`voel-product-modal ${isClosing ? 'voel-product-modal--closing' : ''} fixed inset-0 z-[70] flex items-end justify-center bg-black/50 px-0 backdrop-blur-sm sm:items-center sm:px-4`}
+      style={{
+        '--voel-modal-origin-x': motionOrigin.x,
+        '--voel-modal-origin-y': motionOrigin.y,
+      } as CSSProperties}
+    >
+      <button className="voel-product-modal__backdrop absolute inset-0 cursor-default" onClick={onClose} type="button" aria-label="Fechar detalhe" />
 
-      <section className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-lg bg-[#FDFCF7] shadow-2xl sm:max-w-5xl sm:rounded-lg">
+      <section className="voel-product-modal__panel relative max-h-[92dvh] w-full overflow-y-auto rounded-t-lg bg-[#FDFCF7] shadow-2xl sm:max-w-5xl sm:rounded-lg">
         <div className="grid gap-0 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)]">
           <div className="min-w-0 bg-[#F5F1EC]">
             <div className="relative">
@@ -1129,10 +1149,10 @@ function ProductDetailsModal({
 
               <button
                 onClick={() => onToggleFavorite(product.id)}
-                className="flex items-center justify-center gap-2 rounded-lg border border-[#D8D0C4] bg-white px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#3D3835] transition-colors hover:border-[#8B7355] hover:text-[#8B7355]"
+                className={`voel-favorite-button ${favoriteMotionId === product.id ? 'voel-favorite-button--pulse' : ''} flex items-center justify-center gap-2 rounded-lg border border-[#D8D0C4] bg-white px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#3D3835] transition-colors hover:border-[#8B7355] hover:text-[#8B7355]`}
                 type="button"
               >
-                <Heart size={16} fill={isFavorite ? '#8B7355' : 'none'} className={isFavorite ? 'text-[#8B7355]' : ''} />
+                <Heart size={16} fill={isFavorite ? '#8B7355' : 'none'} className={`voel-favorite-icon ${isFavorite ? 'text-[#8B7355]' : ''}`} />
                 {isFavorite ? 'Favorito' : 'Favoritar'}
               </button>
             </div>
@@ -1208,8 +1228,19 @@ export default function PublicCatalog() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
+  const [productModalOrigin, setProductModalOrigin] = useState<ProductModalOrigin>({ x: '50%', y: '55%' });
+  const [isProductModalClosing, setIsProductModalClosing] = useState(false);
+  const [favoriteMotionId, setFavoriteMotionId] = useState('');
+  const favoriteMotionTimeoutRef = useRef<number | null>(null);
+  const productModalCloseTimeoutRef = useRef<number | null>(null);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const [isHeroPaused, setIsHeroPaused] = useState(false);
+  const [motionProducts, setMotionProducts] = useState<Product[]>([]);
+  const [hasInitializedGridMotion, setHasInitializedGridMotion] = useState(false);
+  const [gridMotionPhase, setGridMotionPhase] = useState<GridMotionPhase>('idle');
+  const [gridMotionCycle, setGridMotionCycle] = useState(0);
+  const gridMotionSignatureRef = useRef('');
+  const gridMotionTimeoutsRef = useRef<number[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1239,6 +1270,20 @@ export default function PublicCatalog() {
   useEffect(() => {
     window.localStorage.setItem(favoriteStorageKey, JSON.stringify(favorites));
   }, [favorites]);
+
+  useEffect(() => {
+    return () => {
+      if (favoriteMotionTimeoutRef.current) {
+        window.clearTimeout(favoriteMotionTimeoutRef.current);
+      }
+
+      if (productModalCloseTimeoutRef.current) {
+        window.clearTimeout(productModalCloseTimeoutRef.current);
+      }
+
+      gridMotionTimeoutsRef.current.forEach(timeoutId => window.clearTimeout(timeoutId));
+    };
+  }, []);
 
   useEffect(() => {
     if (products.length === 0) return;
@@ -1278,6 +1323,14 @@ export default function PublicCatalog() {
 
   const toggleFavorite = (id: string) => {
     setFavorites(previous => previous.includes(id) ? previous.filter(favorite => favorite !== id) : [...previous, id]);
+    setFavoriteMotionId(id);
+    if (favoriteMotionTimeoutRef.current) {
+      window.clearTimeout(favoriteMotionTimeoutRef.current);
+    }
+    favoriteMotionTimeoutRef.current = window.setTimeout(() => {
+      setFavoriteMotionId('');
+      favoriteMotionTimeoutRef.current = null;
+    }, 260);
   };
 
   const handlePageChange = (page: string, category = 'Destaques') => {
@@ -1327,13 +1380,48 @@ export default function PublicCatalog() {
     handleBannerAction();
   };
 
-  const openProductDetails = (product: Product) => {
+  const getProductModalOrigin = (triggerElement?: HTMLElement | null): ProductModalOrigin => {
+    if (!triggerElement) return { x: '50%', y: '55%' };
+
+    const rect = triggerElement.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    return {
+      x: centerX < window.innerWidth * 0.42 ? '38%' : centerX > window.innerWidth * 0.58 ? '62%' : '50%',
+      y: centerY < window.innerHeight * 0.46 ? '42%' : centerY > window.innerHeight * 0.68 ? '68%' : '55%',
+    };
+  };
+
+  const openProductDetails = (product: Product, triggerElement?: HTMLElement | null) => {
+    if (productModalCloseTimeoutRef.current) {
+      window.clearTimeout(productModalCloseTimeoutRef.current);
+      productModalCloseTimeoutRef.current = null;
+    }
+
     const publicColorOptions = getPublicColorOptions(product);
     const publicSizeOptions = getPublicSizeOptions(product);
 
+    setProductModalOrigin(getProductModalOrigin(triggerElement));
+    setIsProductModalClosing(false);
     setSelectedProduct(product);
     setSelectedSize(publicSizeOptions.length === 1 ? publicSizeOptions[0] : '');
     setSelectedColor(publicColorOptions.length === 1 ? publicColorOptions[0] : '');
+  };
+
+  const closeProductDetails = () => {
+    if (isProductModalClosing) return;
+
+    setIsProductModalClosing(true);
+    if (productModalCloseTimeoutRef.current) {
+      window.clearTimeout(productModalCloseTimeoutRef.current);
+    }
+
+    productModalCloseTimeoutRef.current = window.setTimeout(() => {
+      setSelectedProduct(null);
+      setIsProductModalClosing(false);
+      productModalCloseTimeoutRef.current = null;
+    }, 170);
   };
 
   const officialWhatsappNumber = normalizeWhatsappNumber(siteSettings.whatsappNumber);
@@ -1414,25 +1502,70 @@ export default function PublicCatalog() {
     );
   }, [baseProducts, searchQuery]);
 
+  const filteredProductSignature = useMemo(
+    () => filteredProducts.map(product => product.id).join('|'),
+    [filteredProducts],
+  );
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const nextSignature = filteredProductSignature;
+
+    gridMotionTimeoutsRef.current.forEach(timeoutId => window.clearTimeout(timeoutId));
+    gridMotionTimeoutsRef.current = [];
+
+    if (!hasInitializedGridMotion || prefersReducedMotion) {
+      setMotionProducts(filteredProducts);
+      setHasInitializedGridMotion(true);
+      setGridMotionPhase('idle');
+      setGridMotionCycle(previous => previous + 1);
+      gridMotionSignatureRef.current = nextSignature;
+      return;
+    }
+
+    if (gridMotionSignatureRef.current === nextSignature) return;
+
+    setGridMotionPhase('leaving');
+
+    const swapTimeout = window.setTimeout(() => {
+      setMotionProducts(filteredProducts);
+      setGridMotionCycle(previous => previous + 1);
+      gridMotionSignatureRef.current = nextSignature;
+      setGridMotionPhase('entering');
+
+      const idleTimeout = window.setTimeout(() => {
+        setGridMotionPhase('idle');
+        gridMotionTimeoutsRef.current = gridMotionTimeoutsRef.current.filter(timeoutId => timeoutId !== idleTimeout);
+      }, 320);
+
+      gridMotionTimeoutsRef.current.push(idleTimeout);
+      gridMotionTimeoutsRef.current = gridMotionTimeoutsRef.current.filter(timeoutId => timeoutId !== swapTimeout);
+    }, 120);
+
+    gridMotionTimeoutsRef.current.push(swapTimeout);
+  }, [filteredProductSignature, filteredProducts, hasInitializedGridMotion]);
+
+  const visibleProducts = hasInitializedGridMotion ? motionProducts : filteredProducts;
+  const hasProductsInMotionGrid = visibleProducts.length > 0 || gridMotionPhase === 'leaving';
   const hasSearch = searchQuery.trim().length > 0;
 
   const productGridClass = useMemo(() => {
     const baseClass = 'grid grid-cols-2 gap-x-3 gap-y-9 sm:gap-x-5 sm:gap-y-12 md:gap-x-8 md:gap-y-16';
 
-    if (filteredProducts.length === 1) {
+    if (visibleProducts.length === 1) {
       return `${baseClass} mx-auto max-w-[22rem]`;
     }
 
-    if (filteredProducts.length === 2) {
+    if (visibleProducts.length === 2) {
       return `${baseClass} mx-auto max-w-[46rem] md:grid-cols-2`;
     }
 
-    if (filteredProducts.length === 3) {
+    if (visibleProducts.length === 3) {
       return `${baseClass} mx-auto max-w-[70rem] md:grid-cols-2 lg:grid-cols-3`;
     }
 
     return `${baseClass} md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4`;
-  }, [filteredProducts.length]);
+  }, [visibleProducts.length]);
 
   const isHero = !showFavorites && activeCategory === 'Destaques' && !hasSearch && activePage === 'loja';
   const activeHeroBanner = siteBanners[activeBannerIndex] ?? siteBanners[0];
@@ -1449,7 +1582,7 @@ export default function PublicCatalog() {
   }, [hasMultipleHeroBanners, isHero, isHeroPaused, siteBanners.length]);
 
   return (
-    <div className="min-h-screen bg-[#FDFCF7] font-sans text-[#3D3835] selection:bg-[#8B7355]/20">
+    <div className="voel-public min-h-screen bg-[#FDFCF7] font-sans text-[#3D3835] selection:bg-[#8B7355]/20">
       <Header
         onSearchChange={handleSearchChange}
         searchQuery={searchQuery}
@@ -1624,19 +1757,21 @@ export default function PublicCatalog() {
                       </div>
                     ))}
                   </div>
-                ) : filteredProducts.length > 0 ? (
-                  <div className={productGridClass}>
-                    {filteredProducts.map(product => (
+                ) : hasProductsInMotionGrid ? (
+                  <div className={`voel-product-grid voel-product-grid--${gridMotionPhase} ${productGridClass}`}>
+                    {visibleProducts.map((product, productIndex) => (
                       <div
-                        key={product.id}
-                        className="group min-w-0 cursor-pointer"
-                        onClick={() => openProductDetails(product)}
+                        key={`${gridMotionCycle}-${product.id}`}
+                        data-product-card
+                        className="voel-product-card group min-w-0 cursor-pointer"
+                        style={{ '--voel-product-index': productIndex } as CSSProperties}
+                        onClick={(event) => openProductDetails(product, event.currentTarget)}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            openProductDetails(product);
+                            openProductDetails(product, event.currentTarget);
                           }
                         }}
                       >
@@ -1644,21 +1779,24 @@ export default function PublicCatalog() {
                           <ImageWithFallback
                             src={product.imageUrl}
                             alt={product.name}
-                            className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+                            className="voel-product-card__image h-full w-full object-cover"
                           />
 
                           <button
                             onClick={(event) => { event.stopPropagation(); toggleFavorite(product.id); }}
-                            className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/85 text-[#3D3835] shadow-sm backdrop-blur-md transition-all hover:bg-white hover:text-[#8B7355] md:right-4 md:top-4 md:h-10 md:w-10 md:opacity-0 md:group-hover:opacity-100"
+                            className={`voel-favorite-button ${favoriteMotionId === product.id ? 'voel-favorite-button--pulse' : ''} absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/85 text-[#3D3835] shadow-sm backdrop-blur-md transition-all hover:bg-white hover:text-[#8B7355] md:right-4 md:top-4 md:h-10 md:w-10 md:opacity-0 md:group-hover:opacity-100`}
                             type="button"
                             aria-label={favorites.includes(product.id) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
                           >
-                            <Heart size={16} fill={favorites.includes(product.id) ? '#8B7355' : 'none'} className={`${favorites.includes(product.id) ? 'text-[#8B7355]' : 'text-[#3D3835]'} h-3.5 w-3.5 md:h-4 md:w-4`} />
+                            <Heart size={16} fill={favorites.includes(product.id) ? '#8B7355' : 'none'} className={`voel-favorite-icon ${favorites.includes(product.id) ? 'text-[#8B7355]' : 'text-[#3D3835]'} h-3.5 w-3.5 md:h-4 md:w-4`} />
                           </button>
 
                           <div className="absolute inset-x-2 bottom-2 translate-y-0 opacity-100 transition-all duration-300 md:inset-x-4 md:bottom-4 md:translate-y-4 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100">
                             <button
-                              onClick={(event) => { event.stopPropagation(); openProductDetails(product); }}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openProductDetails(product, event.currentTarget.closest('[data-product-card]') as HTMLElement | null);
+                              }}
                               className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#8B7355] py-2 text-[9px] font-bold uppercase leading-tight tracking-[0.08em] text-white shadow-lg transition-colors hover:bg-[#6D5A42] sm:text-[10px] sm:tracking-[0.14em] md:gap-2 md:rounded-lg md:py-3 md:text-[10px] md:tracking-[0.2em]"
                               type="button"
                             >
@@ -1757,9 +1895,12 @@ export default function PublicCatalog() {
         <ProductDetailsModal
           product={selectedProduct}
           isFavorite={favorites.includes(selectedProduct.id)}
+          isClosing={isProductModalClosing}
+          favoriteMotionId={favoriteMotionId}
+          motionOrigin={productModalOrigin}
           selectedSize={selectedSize}
           selectedColor={selectedColor}
-          onClose={() => setSelectedProduct(null)}
+          onClose={closeProductDetails}
           onSizeChange={setSelectedSize}
           onColorChange={setSelectedColor}
           onToggleFavorite={toggleFavorite}
