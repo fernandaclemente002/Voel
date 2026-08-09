@@ -193,10 +193,12 @@ const fallbackSiteBanners: SiteBanner[] = [
   {
     id: 'fallback-banner',
     imageUrl: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2000',
+    mobileImageUrl: null,
     title: null,
     subtitle: null,
     textColor: '#FFFFFF',
     imageFit: 'cover',
+    mobileImageFit: 'contain',
     contentPosition: 'bottom_center',
     showText: false,
     buttonEnabled: false,

@@ -110,10 +110,12 @@ export interface ProductTagInput {
 export interface SiteBanner {
   id: string;
   imageUrl: string;
+  mobileImageUrl?: string | null;
   title?: string | null;
   subtitle?: string | null;
   textColor?: string | null;
   imageFit: SiteBannerImageFit;
+  mobileImageFit: SiteBannerImageFit;
   contentPosition: SiteBannerContentPosition;
   showText: boolean;
   buttonEnabled: boolean;
@@ -130,10 +132,12 @@ export interface SiteBanner {
 export interface SiteBannerInput {
   id?: string;
   imageUrl: string;
+  mobileImageUrl?: string | null;
   title?: string | null;
   subtitle?: string | null;
   textColor?: string | null;
   imageFit: SiteBannerImageFit;
+  mobileImageFit: SiteBannerImageFit;
   contentPosition: SiteBannerContentPosition;
   showText: boolean;
   buttonEnabled: boolean;

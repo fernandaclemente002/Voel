@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { ArrowDown, ArrowUp, ChevronsUpDown, Edit3, ImagePlus, Loader2, LogOut, Package, Plus, RefreshCw, Save, Settings, Tags, Trash2, Upload, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsUpDown, Edit3, ImagePlus, Loader2, LogOut, Package, Plus, RefreshCw, Save, Search, Settings, Tags, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
   CatalogMutationError,
@@ -81,6 +81,8 @@ type BannerForm = SiteBannerInput & {
   localId: string;
   imageFile: File | null;
   imagePreview: string;
+  mobileImageFile: File | null;
+  mobileImagePreview: string;
 };
 
 const bannerTargetOptions: Array<{ value: SiteBannerTargetType; label: string }> = [
@@ -161,6 +163,26 @@ function normalizeComparable(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+}
+
+function getProductDisplayTags(product: Product) {
+  return product.tags?.length ? product.tags : product.tag !== 'Nenhuma' ? [product.tag] : [];
+}
+
+function matchesProductAdminSearch(product: Product, query: string) {
+  const normalizedQuery = normalizeComparable(query);
+  if (!normalizedQuery) return true;
+
+  const searchableValues = [
+    product.name,
+    product.description,
+    product.details ?? '',
+    product.category,
+    product.sku ?? '',
+    ...getProductDisplayTags(product),
+  ];
+
+  return searchableValues.some(value => normalizeComparable(value).includes(normalizedQuery));
 }
 
 function normalizeSizeLabel(value: string) {
@@ -460,6 +482,7 @@ function revokeColorImageRows(rows: ColorImageRow[]) {
 
 function createBannerForm(banner?: SiteBanner, sortOrder = 0): BannerForm {
   const imageUrl = banner?.imageUrl ?? '';
+  const mobileImageUrl = banner?.mobileImageUrl ?? '';
 
   return {
     localId: createId(),
@@ -467,10 +490,14 @@ function createBannerForm(banner?: SiteBanner, sortOrder = 0): BannerForm {
     imageUrl,
     imageFile: null,
     imagePreview: imageUrl,
+    mobileImageUrl,
+    mobileImageFile: null,
+    mobileImagePreview: mobileImageUrl,
     title: banner?.title ?? '',
     subtitle: banner?.subtitle ?? '',
     textColor: banner?.textColor ?? '#FFFFFF',
     imageFit: banner?.imageFit ?? 'cover',
+    mobileImageFit: banner?.mobileImageFit ?? 'contain',
     contentPosition: banner?.contentPosition ?? 'bottom_center',
     showText: banner?.showText ?? false,
     buttonEnabled: banner?.buttonEnabled ?? false,
@@ -483,10 +510,15 @@ function createBannerForm(banner?: SiteBanner, sortOrder = 0): BannerForm {
   };
 }
 
-function revokeBannerPreview(banner: BannerForm) {
-  if (banner.imageFile && banner.imagePreview.startsWith('blob:')) {
-    URL.revokeObjectURL(banner.imagePreview);
+function revokeBannerFilePreview(file: File | null, previewUrl: string) {
+  if (file && previewUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(previewUrl);
   }
+}
+
+function revokeBannerPreview(banner: BannerForm) {
+  revokeBannerFilePreview(banner.imageFile, banner.imagePreview);
+  revokeBannerFilePreview(banner.mobileImageFile, banner.mobileImagePreview);
 }
 
 function revokeBannerForms(banners: BannerForm[]) {
@@ -545,6 +577,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [colorImageRows, setColorImageRows] = useState<ColorImageRow[]>([]);
   const [legacyGeneralDetailImages, setLegacyGeneralDetailImages] = useState<ColorImageItem[]>([]);
+  const [productSearchQuery, setProductSearchQuery] = useState('');
   const colorImageRowsRef = useRef<ColorImageRow[]>([]);
   const legacyGeneralDetailImagesRef = useRef<ColorImageItem[]>([]);
   const siteBannersRef = useRef<BannerForm[]>([]);
@@ -1152,16 +1185,41 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     }
   };
 
-  const handleUpdateBannerImage = (localId: string, file: File | null) => {
+  const handleUpdateBannerImage = (localId: string, file: File | null, target: 'desktop' | 'mobile' = 'desktop') => {
     setSiteBanners(previous => previous.map(banner => {
       if (banner.localId !== localId) return banner;
 
-      revokeBannerPreview(banner);
+      if (target === 'mobile') {
+        revokeBannerFilePreview(banner.mobileImageFile, banner.mobileImagePreview);
+
+        return {
+          ...banner,
+          mobileImageFile: file,
+          mobileImagePreview: file && typeof URL !== 'undefined' ? URL.createObjectURL(file) : (banner.mobileImageUrl?.trim() ?? ''),
+        };
+      }
+
+      revokeBannerFilePreview(banner.imageFile, banner.imagePreview);
 
       return {
         ...banner,
         imageFile: file,
         imagePreview: file && typeof URL !== 'undefined' ? URL.createObjectURL(file) : banner.imageUrl,
+      };
+    }));
+  };
+
+  const handleClearBannerMobileImage = (localId: string) => {
+    setSiteBanners(previous => previous.map(banner => {
+      if (banner.localId !== localId) return banner;
+
+      revokeBannerFilePreview(banner.mobileImageFile, banner.mobileImagePreview);
+
+      return {
+        ...banner,
+        mobileImageUrl: null,
+        mobileImageFile: null,
+        mobileImagePreview: '',
       };
     }));
   };
@@ -1261,19 +1319,27 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
 
       for (const [index, banner] of siteBanners.entries()) {
         let imageUrl = banner.imageUrl.trim();
+        let mobileImageUrl = banner.mobileImageUrl?.trim() ?? '';
 
         if (banner.imageFile) {
           const uploadedImage = await uploadSiteImage(banner.imageFile);
           imageUrl = uploadedImage.imageUrl;
         }
 
+        if (banner.mobileImageFile) {
+          const uploadedImage = await uploadSiteImage(banner.mobileImageFile);
+          mobileImageUrl = uploadedImage.imageUrl;
+        }
+
         await saveSiteBanner({
           id: banner.id,
           imageUrl,
+          mobileImageUrl: mobileImageUrl || null,
           title: banner.title,
           subtitle: banner.subtitle,
           textColor: banner.textColor,
           imageFit: banner.imageFit,
+          mobileImageFit: banner.mobileImageFit,
           contentPosition: banner.contentPosition,
           showText: banner.showText,
           buttonEnabled: banner.buttonEnabled,
@@ -1536,6 +1602,12 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const lowStockProducts = products
     .filter(product => product.stockQuantity <= lowStockLimit)
     .sort((firstProduct, secondProduct) => firstProduct.stockQuantity - secondProduct.stockQuantity);
+  const filteredAdminProducts = useMemo(() => {
+    const query = productSearchQuery.trim();
+    if (!query) return products;
+    return products.filter(product => matchesProductAdminSearch(product, query));
+  }, [products, productSearchQuery]);
+  const hasProductSearch = productSearchQuery.trim().length > 0;
 
   return (
     <div className="min-h-screen bg-[#F7F5EF] text-[#2F2A27]">
@@ -2148,14 +2220,45 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                 )}
               </div>
 
+              <div className="border-b border-[#E5E0D8] bg-white p-5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <label className="relative block flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9B8F7E]" size={18} />
+                    <input
+                      value={productSearchQuery}
+                      onChange={(event) => setProductSearchQuery(event.target.value)}
+                      className={`${fieldClass} min-h-12 pl-10`}
+                      placeholder="Buscar produto por nome, categoria, tag ou SKU..."
+                    />
+                  </label>
+
+                  <button
+                    onClick={() => setProductSearchQuery('')}
+                    disabled={!hasProductSearch}
+                    className="min-h-12 rounded-lg border border-[#D8D0C4] bg-white px-4 text-xs font-bold uppercase tracking-[0.16em] text-[#3D3835] transition-colors hover:border-[#8B7355] disabled:cursor-not-allowed disabled:opacity-40"
+                    type="button"
+                  >
+                    Limpar busca
+                  </button>
+                </div>
+                <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[#9B8F7E]">
+                  {filteredAdminProducts.length} produtos encontrados
+                </p>
+              </div>
+
               <div className="divide-y divide-[#E5E0D8]">
                 {products.length === 0 ? (
                   <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-8 text-center text-[#7A7067]">
                     <ImagePlus size={28} />
                     <p className="text-sm">Nenhum produto cadastrado.</p>
                   </div>
+                ) : filteredAdminProducts.length === 0 ? (
+                  <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-8 text-center text-[#7A7067]">
+                    <Search size={28} />
+                    <p className="text-sm">Nenhum produto encontrado para essa busca.</p>
+                  </div>
                 ) : (
-                  products.map(product => (
+                  filteredAdminProducts.map(product => (
                     <article key={product.id} className="grid gap-4 p-4 md:grid-cols-[88px_1fr_auto]">
                       <div className="h-28 w-24 overflow-hidden rounded-lg bg-[#F5F1EC] md:h-24">
                         {product.imageUrl ? (
@@ -2173,7 +2276,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                           <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.15em] ${product.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-zinc-100 text-zinc-600'}`}>
                             {product.isActive ? 'Ativo' : 'Inativo'}
                           </span>
-                          {(product.tags?.length ? product.tags : product.tag !== 'Nenhuma' ? [product.tag] : []).map(tag => (
+                          {getProductDisplayTags(product).map(tag => (
                             <span key={tag} className="rounded-full bg-[#F5F1EC] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-[#8B7355]">{tag}</span>
                           ))}
                         </div>
@@ -2429,17 +2532,43 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                     <article key={banner.localId} className="grid gap-5 p-5 lg:grid-cols-[minmax(260px,360px)_1fr]">
                       <div className="space-y-3">
                         <label className="block space-y-1.5">
-                          <span className={labelClass}>Imagem do banner</span>
+                          <span className={labelClass}>Imagem do banner para desktop</span>
                           <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-4 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
                             <Upload size={16} /> {banner.imageFile ? banner.imageFile.name : banner.imagePreview ? 'Trocar imagem' : 'Enviar imagem'}
                             <input
                               type="file"
                               accept="image/*"
                               className="hidden"
-                              onChange={(event) => handleUpdateBannerImage(banner.localId, event.target.files?.[0] ?? null)}
+                              onChange={(event) => handleUpdateBannerImage(banner.localId, event.target.files?.[0] ?? null, 'desktop')}
                             />
                           </span>
                         </label>
+
+                        <label className="block space-y-1.5">
+                          <span className={labelClass}>Imagem do banner para celular</span>
+                          <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#C9BFAF] bg-[#FDFCF7] px-3 py-4 text-sm text-[#7A7067] transition-colors hover:border-[#8B7355]">
+                            <Upload size={16} /> {banner.mobileImageFile ? banner.mobileImageFile.name : banner.mobileImagePreview ? 'Trocar imagem mobile' : 'Enviar imagem mobile'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(event) => handleUpdateBannerImage(banner.localId, event.target.files?.[0] ?? null, 'mobile')}
+                            />
+                          </span>
+                          <span className="block text-xs leading-relaxed text-[#9B8F7E]">
+                            Use uma imagem mais vertical ou adaptada para telas pequenas. Se não enviar, o site usará a imagem desktop.
+                          </span>
+                        </label>
+
+                        {banner.mobileImagePreview && (
+                          <button
+                            onClick={() => handleClearBannerMobileImage(banner.localId)}
+                            className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#E5E0D8] bg-white px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-[#7A7067] transition-colors hover:border-red-200 hover:text-red-700"
+                            type="button"
+                          >
+                            <X size={13} /> Remover imagem mobile
+                          </button>
+                        )}
 
                         {banner.imagePreview ? (
                           <div className="space-y-3">
@@ -2466,27 +2595,30 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                                 </div>
                               )}
                             </div>
-                            <div className="relative mx-auto w-28 overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#3D3835]">
-                              {banner.imageFit === 'contain' && (
-                                <img src={banner.imagePreview} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-md" />
-                              )}
-                              <img
-                                src={banner.imagePreview}
-                                alt={`Prévia mobile do banner ${index + 1}`}
-                                className={`relative aspect-[9/14] w-full ${banner.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
-                              />
-                              {(banner.showText || banner.buttonEnabled) && (
-                                <div className={`absolute inset-0 flex bg-gradient-to-t from-black/45 via-black/10 to-transparent p-2 ${getBannerContentPositionClass(banner.contentPosition)}`} style={{ color: banner.textColor || '#FFFFFF' }}>
-                                  <div className="max-w-full space-y-1">
-                                    {banner.showText && banner.title && <p className="overflow-hidden break-words font-serif text-[10px] uppercase leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{banner.title}</p>}
-                                    {banner.buttonEnabled && (
-                                      <span className="inline-flex max-w-full rounded-full bg-white/90 px-2 py-1 text-[7px] font-bold uppercase text-[#3D3835]">
-                                        {banner.buttonLabel?.trim() || 'Ver vitrine'}
-                                      </span>
-                                    )}
+                            <div className="mx-auto w-32 space-y-2">
+                              <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[#9B8F7E]">Prévia celular</p>
+                              <div className="relative overflow-hidden rounded-lg border border-[#E5E0D8] bg-[#3D3835]">
+                                {banner.mobileImageFit === 'contain' && (
+                                  <img src={banner.mobileImagePreview || banner.imagePreview} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-md" />
+                                )}
+                                <img
+                                  src={banner.mobileImagePreview || banner.imagePreview}
+                                  alt={`Prévia mobile do banner ${index + 1}`}
+                                  className={`relative aspect-[9/14] w-full ${banner.mobileImageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+                                />
+                                {(banner.showText || banner.buttonEnabled) && (
+                                  <div className={`absolute inset-0 flex bg-gradient-to-t from-black/45 via-black/10 to-transparent p-2 ${getBannerContentPositionClass(banner.contentPosition)}`} style={{ color: banner.textColor || '#FFFFFF' }}>
+                                    <div className="max-w-full space-y-1">
+                                      {banner.showText && banner.title && <p className="overflow-hidden break-words font-serif text-[10px] uppercase leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{banner.title}</p>}
+                                      {banner.buttonEnabled && (
+                                        <span className="inline-flex max-w-full rounded-full bg-white/90 px-2 py-1 text-[7px] font-bold uppercase text-[#3D3835]">
+                                          {banner.buttonLabel?.trim() || 'Ver vitrine'}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -2538,12 +2670,25 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                           </label>
                         </div>
 
-                        <div className="grid gap-3 md:grid-cols-2">
+                        <div className="grid gap-3 md:grid-cols-3">
                           <label className="block space-y-1.5">
-                            <span className={labelClass}>Ajuste da imagem</span>
+                            <span className={labelClass}>Ajuste da imagem desktop</span>
                             <select
                               value={banner.imageFit}
                               onChange={(event) => handleUpdateBanner(banner.localId, { imageFit: event.target.value as SiteBannerImageFit })}
+                              className={selectClass}
+                            >
+                              {bannerImageFitOptions.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block space-y-1.5">
+                            <span className={labelClass}>Ajuste da imagem mobile</span>
+                            <select
+                              value={banner.mobileImageFit}
+                              onChange={(event) => handleUpdateBanner(banner.localId, { mobileImageFit: event.target.value as SiteBannerImageFit })}
                               className={selectClass}
                             >
                               {bannerImageFitOptions.map(option => (

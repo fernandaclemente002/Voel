@@ -13,10 +13,12 @@ $$;
 create table if not exists public.site_banners (
   id uuid primary key default gen_random_uuid(),
   image_url text not null default '',
+  mobile_image_url text,
   title text,
   subtitle text,
   text_color text,
   image_fit text not null default 'cover',
+  mobile_image_fit text not null default 'contain',
   content_position text not null default 'bottom_center',
   show_text boolean not null default false,
   button_enabled boolean not null default false,
@@ -32,6 +34,8 @@ create table if not exists public.site_banners (
     check (target_type in ('all', 'featured', 'tag', 'category', 'external')),
   constraint site_banners_image_fit_check
     check (image_fit in ('cover', 'contain')),
+  constraint site_banners_mobile_image_fit_check
+    check (mobile_image_fit in ('cover', 'contain')),
   constraint site_banners_content_position_check
     check (content_position in ('center', 'bottom_center', 'bottom_left', 'bottom_right'))
 );
@@ -51,6 +55,8 @@ on conflict (id) do nothing;
 
 alter table public.site_banners
   add column if not exists image_fit text not null default 'cover',
+  add column if not exists mobile_image_url text,
+  add column if not exists mobile_image_fit text not null default 'contain',
   add column if not exists content_position text not null default 'bottom_center';
 
 alter table public.site_banners
@@ -78,6 +84,13 @@ alter table public.site_banners
 alter table public.site_banners
   add constraint site_banners_image_fit_check
   check (image_fit in ('cover', 'contain'));
+
+alter table public.site_banners
+  drop constraint if exists site_banners_mobile_image_fit_check;
+
+alter table public.site_banners
+  add constraint site_banners_mobile_image_fit_check
+  check (mobile_image_fit in ('cover', 'contain'));
 
 alter table public.site_banners
   drop constraint if exists site_banners_content_position_check;
