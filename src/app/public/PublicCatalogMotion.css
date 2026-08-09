@@ -1,0 +1,209 @@
+.voel-public {
+  --voel-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --voel-motion-duration: 280ms;
+  --voel-motion-fast: 180ms;
+  --voel-motion-grid-out: 120ms;
+  --voel-motion-stagger: 42ms;
+}
+
+.voel-menu-item {
+  position: relative;
+}
+
+.voel-menu-item::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -0.45rem;
+  width: 2.2rem;
+  height: 1px;
+  background: #8B7355;
+  opacity: 0;
+  transform: scaleX(0.35);
+  transform-origin: left center;
+  transition:
+    opacity var(--voel-motion-fast) var(--voel-motion-ease),
+    transform var(--voel-motion-duration) var(--voel-motion-ease);
+}
+
+.voel-menu-item--active::after {
+  opacity: 0.75;
+  transform: scaleX(1);
+}
+
+.voel-product-grid {
+  --voel-grid-lift: 7px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--voel-motion-grid-out) var(--voel-motion-ease),
+    transform var(--voel-motion-grid-out) var(--voel-motion-ease);
+}
+
+.voel-product-grid--leaving {
+  opacity: 0.24;
+  pointer-events: none;
+  transform: translateY(4px);
+}
+
+.voel-product-grid--entering .voel-product-card {
+  animation: voelProductCardEnter var(--voel-motion-duration) var(--voel-motion-ease) both;
+  animation-delay: min(calc(var(--voel-product-index) * var(--voel-motion-stagger)), 220ms);
+}
+
+.voel-product-card {
+  min-width: 0;
+  will-change: opacity, transform;
+}
+
+.voel-product-card__image {
+  transition: transform 420ms var(--voel-motion-ease);
+}
+
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .voel-product-card:hover .voel-product-card__image {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes voelProductCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--voel-grid-lift));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.voel-favorite-icon {
+  transform-origin: center;
+  transition:
+    color var(--voel-motion-fast) var(--voel-motion-ease),
+    fill var(--voel-motion-fast) var(--voel-motion-ease),
+    transform var(--voel-motion-fast) var(--voel-motion-ease);
+}
+
+.voel-favorite-button--pulse .voel-favorite-icon {
+  animation: voelFavoritePulse 220ms var(--voel-motion-ease);
+}
+
+@keyframes voelFavoritePulse {
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.13);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.voel-product-modal {
+  --voel-modal-origin-x: 50%;
+  --voel-modal-origin-y: 55%;
+  animation: voelModalBackdropIn 260ms var(--voel-motion-ease) both;
+}
+
+.voel-product-modal__panel {
+  transform-origin: var(--voel-modal-origin-x) var(--voel-modal-origin-y);
+  animation: voelModalPanelIn 260ms var(--voel-motion-ease) both;
+  will-change: opacity, transform;
+}
+
+.voel-product-modal--closing {
+  animation: voelModalBackdropOut 170ms ease-out both;
+}
+
+.voel-product-modal--closing .voel-product-modal__panel {
+  animation: voelModalPanelOut 170ms ease-out both;
+}
+
+@keyframes voelModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes voelModalBackdropOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes voelModalPanelIn {
+  from {
+    opacity: 0;
+    transform: scale(0.985) translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes voelModalPanelOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.988) translateY(4px);
+  }
+}
+
+@media (max-width: 640px) {
+  .voel-public {
+    --voel-motion-duration: 240ms;
+    --voel-motion-stagger: 30ms;
+  }
+
+  .voel-product-grid {
+    --voel-grid-lift: 5px;
+  }
+
+  .voel-product-grid--entering .voel-product-card {
+    animation-delay: min(calc(var(--voel-product-index) * var(--voel-motion-stagger)), 140ms);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voel-product-grid,
+  .voel-product-card,
+  .voel-product-card__image,
+  .voel-favorite-icon,
+  .voel-menu-item::after,
+  .voel-product-modal,
+  .voel-product-modal__panel {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+  }
+
+  .voel-product-grid,
+  .voel-product-card,
+  .voel-product-modal,
+  .voel-product-modal__panel {
+    opacity: 1 !important;
+  }
+
+  .voel-product-grid--leaving {
+    pointer-events: auto;
+  }
+}
