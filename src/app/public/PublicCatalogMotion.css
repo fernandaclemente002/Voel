@@ -6,6 +6,284 @@
   --voel-motion-stagger: 42ms;
 }
 
+.voel-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: #FDFCF7;
+  pointer-events: auto;
+  animation: voelSplashSurface 2600ms var(--voel-motion-ease) both;
+}
+
+.voel-splash__stage {
+  position: relative;
+  width: min(58vw, clamp(132px, 24vw, 230px), calc(52dvh * 908 / 997));
+  aspect-ratio: 908 / 997;
+  animation: voelSplashStageExit 2600ms var(--voel-motion-ease) both;
+  isolation: isolate;
+}
+
+.voel-splash__piece,
+.voel-splash__complete-logo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.voel-splash__piece {
+  opacity: 0;
+  will-change: opacity, transform, clip-path;
+}
+
+.voel-splash__piece--v-mark,
+.voel-splash__piece--l-mark,
+.voel-splash__piece--swoosh {
+  clip-path: polygon(0 100%, 0 100%, 0 100%, 0 100%);
+}
+
+.voel-splash__piece--v-mark,
+.voel-splash__piece--l-mark {
+  z-index: 1;
+}
+
+.voel-splash__piece--swoosh {
+  z-index: 2;
+  animation: voelSplashSwooshBuild 700ms var(--voel-motion-ease) 250ms both;
+}
+
+.voel-splash__piece--v-mark {
+  animation: voelSplashVBuild 600ms var(--voel-motion-ease) 500ms both;
+}
+
+.voel-splash__piece--l-mark {
+  animation: voelSplashLBuild 580ms var(--voel-motion-ease) 520ms both;
+}
+
+.voel-splash__piece--word {
+  z-index: 1;
+  animation: voelSplashWordCompose 320ms var(--voel-motion-ease) both;
+  transform-origin: center 86%;
+}
+
+.voel-splash__piece--word-v {
+  --voel-word-offset: 8px;
+  animation-delay: 1050ms;
+}
+
+.voel-splash__piece--word-o {
+  --voel-word-offset: 3px;
+  animation-delay: 1125ms;
+}
+
+.voel-splash__piece--word-e {
+  --voel-word-offset: -3px;
+  animation-delay: 1200ms;
+}
+
+.voel-splash__piece--word-l {
+  --voel-word-offset: -8px;
+  animation-delay: 1275ms;
+}
+
+.voel-splash__complete-logo {
+  z-index: 3;
+  opacity: 0;
+  animation: voelSplashCompleteLock 2600ms var(--voel-motion-ease) both;
+}
+
+.voel-splash__shine {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      52deg,
+      transparent 42%,
+      rgba(255, 255, 255, 0) 46%,
+      rgba(255, 255, 255, 0.5) 50%,
+      rgba(255, 255, 255, 0) 54%,
+      transparent 58%
+    );
+  mask-image: var(--voel-splash-logo-mask);
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-image: var(--voel-splash-logo-mask);
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  opacity: 0;
+  transform: translate(-48%, 38%);
+  animation: voelSplashShine 2600ms var(--voel-motion-ease) both;
+  mix-blend-mode: screen;
+  will-change: opacity, transform;
+}
+
+@keyframes voelSplashSurface {
+  0% {
+    opacity: 1;
+  }
+
+  82.69% {
+    opacity: 1;
+  }
+
+  90.38% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes voelSplashStageExit {
+  0%,
+  90.38% {
+    transform: translateY(0);
+  }
+
+  100% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes voelSplashSwooshBuild {
+  0% {
+    opacity: 0;
+    clip-path: polygon(0 100%, 0 100%, 0 100%, 0 100%);
+    transform: translate(-1px, 2px);
+  }
+
+  16% {
+    opacity: 0.72;
+    clip-path: polygon(0 100%, 0 78%, 23% 100%, 23% 100%);
+    transform: translate(-0.5px, 1px);
+  }
+
+  82% {
+    opacity: 1;
+    clip-path: polygon(0 100%, 0 0, 84% 0, 34% 100%);
+    transform: translate(0, 0);
+  }
+
+  100% {
+    opacity: 1;
+    clip-path: polygon(0 100%, 0 0, 100% 0, 100% 100%);
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes voelSplashVBuild {
+  0% {
+    opacity: 0;
+    clip-path: polygon(0 100%, 0 100%, 0 100%, 0 100%);
+    transform: translate(-3px, 3px);
+  }
+
+  34% {
+    opacity: 0.46;
+    clip-path: polygon(0 100%, 0 72%, 28% 100%, 28% 100%);
+    transform: translate(-2px, 2px);
+  }
+
+  76% {
+    opacity: 1;
+    clip-path: polygon(0 100%, 0 0, 86% 0, 36% 100%);
+    transform: translate(-1px, 1px);
+  }
+
+  100% {
+    opacity: 1;
+    clip-path: polygon(0 100%, 0 0, 100% 0, 100% 100%);
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes voelSplashLBuild {
+  0% {
+    opacity: 0;
+    clip-path: polygon(0 100%, 0 100%, 0 100%, 0 100%);
+    transform: translate(3px, 3px);
+  }
+
+  32% {
+    opacity: 0.42;
+    clip-path: polygon(0 100%, 0 70%, 32% 100%, 32% 100%);
+    transform: translate(2px, 2px);
+  }
+
+  74% {
+    opacity: 1;
+    clip-path: polygon(0 100%, 0 0, 88% 0, 38% 100%);
+    transform: translate(1px, 1px);
+  }
+
+  100% {
+    opacity: 1;
+    clip-path: polygon(0 100%, 0 0, 100% 0, 100% 100%);
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes voelSplashWordCompose {
+  0% {
+    opacity: 0;
+    transform: translateX(var(--voel-word-offset)) translateY(3px) scaleX(0.975);
+  }
+
+  72% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scaleX(1);
+  }
+}
+
+@keyframes voelSplashCompleteLock {
+  0%,
+  57.69% {
+    opacity: 0;
+  }
+
+  71.15%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes voelSplashShine {
+  0%,
+  69.23% {
+    opacity: 0;
+    transform: translate(-48%, 38%);
+  }
+
+  75% {
+    opacity: 0.12;
+  }
+
+  79.62% {
+    opacity: 0.085;
+  }
+
+  82.69%,
+  100% {
+    opacity: 0;
+    transform: translate(48%, -38%);
+  }
+}
+
 .voel-menu-item {
   position: relative;
 }
@@ -201,6 +479,54 @@
   .voel-product-modal,
   .voel-product-modal__panel {
     opacity: 1 !important;
+  }
+
+  .voel-splash {
+    animation: voelSplashReducedSurface 760ms ease-out both !important;
+  }
+
+  .voel-splash__stage {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .voel-splash__piece,
+  .voel-splash__shine {
+    display: none !important;
+  }
+
+  .voel-splash__complete-logo {
+    animation: voelSplashReducedLogo 760ms ease-out both !important;
+    opacity: 0;
+    transform: none !important;
+  }
+
+  @keyframes voelSplashReducedSurface {
+    0% {
+      opacity: 1;
+    }
+
+    72% {
+      opacity: 1;
+    }
+
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes voelSplashReducedLogo {
+    0% {
+      opacity: 0;
+    }
+
+    24% {
+      opacity: 1;
+    }
+
+    100% {
+      opacity: 1;
+    }
   }
 
   .voel-product-grid--leaving {
