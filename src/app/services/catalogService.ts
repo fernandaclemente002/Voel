@@ -83,10 +83,12 @@ type ProductRow = {
 type SiteBannerRow = {
   id: string;
   image_url: string | null;
+  mobile_image_url?: string | null;
   title: string | null;
   subtitle: string | null;
   text_color: string | null;
   image_fit?: string | null;
+  mobile_image_fit?: string | null;
   content_position?: string | null;
   show_text: boolean | null;
   button_enabled: boolean | null;
@@ -129,8 +131,9 @@ const siteBannerTargetTypes: SiteBannerTargetType[] = [
 
 const siteBannerImageFits: SiteBannerImageFit[] = ['cover', 'contain'];
 const siteBannerContentPositions: SiteBannerContentPosition[] = ['center', 'bottom_center', 'bottom_left', 'bottom_right'];
-const siteBannerSelect = 'id,image_url,title,subtitle,text_color,image_fit,content_position,show_text,button_enabled,button_label,target_type,target_value,external_url,sort_order,active,created_at,updated_at';
-const legacySiteBannerSelect = 'id,image_url,title,subtitle,text_color,show_text,button_enabled,button_label,target_type,target_value,external_url,sort_order,active,created_at,updated_at';
+const siteBannerSelect = 'id,image_url,mobile_image_url,title,subtitle,text_color,image_fit,mobile_image_fit,content_position,show_text,button_enabled,button_label,target_type,target_value,external_url,sort_order,active,created_at,updated_at';
+const legacySiteBannerSelect = 'id,image_url,title,subtitle,text_color,image_fit,content_position,show_text,button_enabled,button_label,target_type,target_value,external_url,sort_order,active,created_at,updated_at';
+const classicSiteBannerSelect = 'id,image_url,title,subtitle,text_color,show_text,button_enabled,button_label,target_type,target_value,external_url,sort_order,active,created_at,updated_at';
 const complementaryImageGroupLabels = new Set([
   'costas',
   'detalhe',
@@ -213,7 +216,10 @@ async function fetchSiteBannerRows(client: SupabaseClient, activeOnly: boolean) 
   const result = await buildSiteBannerQuery(client, siteBannerSelect, activeOnly);
   if (!result.error) return result;
 
-  return buildSiteBannerQuery(client, legacySiteBannerSelect, activeOnly);
+  const legacyResult = await buildSiteBannerQuery(client, legacySiteBannerSelect, activeOnly);
+  if (!legacyResult.error) return legacyResult;
+
+  return buildSiteBannerQuery(client, classicSiteBannerSelect, activeOnly);
 }
 
 function slugifyTag(value: string) {
@@ -417,10 +423,12 @@ function mapSiteBanner(row: SiteBannerRow): SiteBanner {
   return {
     id: row.id,
     imageUrl: row.image_url?.trim() ?? '',
+    mobileImageUrl: row.mobile_image_url?.trim() || null,
     title: row.title,
     subtitle: row.subtitle,
     textColor: row.text_color?.trim() || '#FFFFFF',
     imageFit: normalizeSiteBannerImageFit(row.image_fit),
+    mobileImageFit: normalizeSiteBannerImageFit(row.mobile_image_fit ?? 'contain'),
     contentPosition: normalizeSiteBannerContentPosition(row.content_position),
     showText: row.show_text ?? false,
     buttonEnabled: row.button_enabled ?? false,
@@ -567,10 +575,12 @@ function toProductPayload(input: ProductInput) {
 function toSiteBannerPayload(input: SiteBannerInput) {
   return {
     image_url: input.imageUrl.trim(),
+    mobile_image_url: input.mobileImageUrl?.trim() || null,
     title: input.title?.trim() || null,
     subtitle: input.subtitle?.trim() || null,
     text_color: input.textColor?.trim() || null,
     image_fit: input.imageFit,
+    mobile_image_fit: input.mobileImageFit,
     content_position: input.contentPosition,
     show_text: input.showText,
     button_enabled: input.buttonEnabled,

@@ -1463,7 +1463,7 @@ export default function PublicCatalog() {
           <>
             {isHero && (
               <section
-                className="relative h-[58dvh] min-h-[360px] max-h-[560px] w-full overflow-hidden bg-[#2F2A27] sm:h-[68dvh] md:h-[88dvh] md:min-h-[560px] md:max-h-none"
+                className="relative h-[54dvh] min-h-[320px] max-h-[500px] w-full overflow-hidden bg-[#2F2A27] sm:h-[62dvh] md:h-[82dvh] md:min-h-[520px] md:max-h-none"
                 onClick={() => handleBannerAction(activeHeroBanner)}
                 onMouseEnter={() => setIsHeroPaused(true)}
                 onMouseLeave={() => setIsHeroPaused(false)}
@@ -1483,17 +1483,29 @@ export default function PublicCatalog() {
                     className={`absolute inset-0 transition-all duration-700 ease-out ${activeBannerIndex === bannerIndex ? 'translate-x-0 opacity-100' : 'translate-x-3 opacity-0'}`}
                     aria-hidden={activeBannerIndex !== bannerIndex}
                   >
+                    {banner.mobileImageFit === 'contain' && (
+                      <ImageWithFallback
+                        src={banner.mobileImageUrl || banner.imageUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-45 blur-xl md:hidden"
+                      />
+                    )}
                     {banner.imageFit === 'contain' && (
                       <ImageWithFallback
                         src={banner.imageUrl}
                         alt=""
-                        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-45 blur-xl"
+                        className="absolute inset-0 hidden h-full w-full scale-110 object-cover opacity-45 blur-xl md:block"
                       />
                     )}
                     <ImageWithFallback
+                      src={banner.mobileImageUrl || banner.imageUrl}
+                      alt={banner.title || banner.subtitle || 'Banner VÖEL'}
+                      className={`h-full w-full object-center md:hidden ${banner.mobileImageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+                    />
+                    <ImageWithFallback
                       src={banner.imageUrl}
                       alt={banner.title || banner.subtitle || 'Banner VÖEL'}
-                      className={`h-full w-full object-center ${banner.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+                      className={`hidden h-full w-full object-center md:block ${banner.imageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
                     />
 
                     {bannerHasContent(banner) && (
