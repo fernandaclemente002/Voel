@@ -5,11 +5,23 @@ import OurStory from '../components/OurStory';
 import { fetchPublicCatalog } from '../services/catalogService';
 import type { Category, Product, SiteBanner, SiteSettings } from '../types/catalog';
 import { defaultSiteSettings } from '../types/catalog';
+import voelSplashLogo from '../../img/voel-splash-logo.png';
+import voelSplashLMark from '../../img/voel-splash-l-mark.png';
+import voelSplashSwoosh from '../../img/voel-splash-swoosh.png';
+import voelSplashVMark from '../../img/voel-splash-v-mark.png';
+import voelSplashWordE from '../../img/voel-splash-word-e.png';
+import voelSplashWordL from '../../img/voel-splash-word-l.png';
+import voelSplashWordO from '../../img/voel-splash-word-o.png';
+import voelSplashWordV from '../../img/voel-splash-word-v.png';
 import './PublicCatalogMotion.css';
 
 const favoriteStorageKey = 'voel:favorites';
+const publicSplashStorageKey = 'voel:public-splash-seen';
+const publicSplashDurationMs = 2600;
+const reducedMotionPublicSplashDurationMs = 760;
 const publicLowStockLimit = 3;
 const productZoomScale = 1.85;
+let hasShownPublicSplashInMemory = false;
 
 type MenuItem = {
   label: string;
@@ -64,6 +76,20 @@ const complementaryImageGroupLabels = new Set([
   'lateral',
 ]);
 
+function shouldShowPublicSplash() {
+  if (typeof window === 'undefined' || hasShownPublicSplashInMemory) return false;
+
+  try {
+    if (window.sessionStorage.getItem(publicSplashStorageKey) === 'true') return false;
+  } catch {
+    hasShownPublicSplashInMemory = true;
+    return true;
+  }
+
+  hasShownPublicSplashInMemory = true;
+  return true;
+}
+
 function ImageWithFallback({ src, alt, className, style }: { src: string; alt: string; className?: string; style?: CSSProperties }) {
   const [error, setError] = useState(false);
 
@@ -79,6 +105,68 @@ function ImageWithFallback({ src, alt, className, style }: { src: string; alt: s
       style={style}
       onError={() => setError(true)}
     />
+  );
+}
+
+function PublicSplashScreen() {
+  const splashStyle = {
+    '--voel-splash-logo-mask': `url(${voelSplashLogo})`,
+  } as CSSProperties;
+
+  return (
+    <div className="voel-splash" style={splashStyle} aria-hidden="true">
+      <div className="voel-splash__stage">
+        <img
+          src={voelSplashSwoosh}
+          alt=""
+          className="voel-splash__piece voel-splash__piece--swoosh"
+          draggable={false}
+        />
+        <img
+          src={voelSplashVMark}
+          alt=""
+          className="voel-splash__piece voel-splash__piece--v-mark"
+          draggable={false}
+        />
+        <img
+          src={voelSplashLMark}
+          alt=""
+          className="voel-splash__piece voel-splash__piece--l-mark"
+          draggable={false}
+        />
+        <img
+          src={voelSplashWordV}
+          alt=""
+          className="voel-splash__piece voel-splash__piece--word voel-splash__piece--word-v"
+          draggable={false}
+        />
+        <img
+          src={voelSplashWordO}
+          alt=""
+          className="voel-splash__piece voel-splash__piece--word voel-splash__piece--word-o"
+          draggable={false}
+        />
+        <img
+          src={voelSplashWordE}
+          alt=""
+          className="voel-splash__piece voel-splash__piece--word voel-splash__piece--word-e"
+          draggable={false}
+        />
+        <img
+          src={voelSplashWordL}
+          alt=""
+          className="voel-splash__piece voel-splash__piece--word voel-splash__piece--word-l"
+          draggable={false}
+        />
+        <img
+          src={voelSplashLogo}
+          alt=""
+          className="voel-splash__complete-logo"
+          draggable={false}
+        />
+        <div className="voel-splash__shine" />
+      </div>
+    </div>
   );
 }
 
@@ -1206,6 +1294,7 @@ function ProductDetailsModal({
 }
 
 export default function PublicCatalog() {
+  const [showPublicSplash, setShowPublicSplash] = useState(shouldShowPublicSplash);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [siteBanners, setSiteBanners] = useState<SiteBanner[]>([]);
@@ -1241,6 +1330,23 @@ export default function PublicCatalog() {
   const [gridMotionCycle, setGridMotionCycle] = useState(0);
   const gridMotionSignatureRef = useRef('');
   const gridMotionTimeoutsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (!showPublicSplash) return;
+
+    try {
+      window.sessionStorage.setItem(publicSplashStorageKey, 'true');
+    } catch {
+      // Session storage may be unavailable in private browsing or embedded contexts.
+    }
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timeoutId = window.setTimeout(() => {
+      setShowPublicSplash(false);
+    }, prefersReducedMotion ? reducedMotionPublicSplashDurationMs : publicSplashDurationMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [showPublicSplash]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1583,6 +1689,8 @@ export default function PublicCatalog() {
 
   return (
     <div className="voel-public min-h-screen bg-[#FDFCF7] font-sans text-[#3D3835] selection:bg-[#8B7355]/20">
+      {showPublicSplash && <PublicSplashScreen />}
+
       <Header
         onSearchChange={handleSearchChange}
         searchQuery={searchQuery}
