@@ -4,9 +4,9 @@ The workflow at `.github/workflows/supabase-activity.yml` sends a read-only requ
 
 ## One-time setup
 
-1. Merge the pull request that adds this workflow.
-2. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
-3. Add a repository secret named `SUPABASE_ANON_KEY` with the project's **anon public key** (the same public key used as `VITE_SUPABASE_ANON_KEY`). Never use a `service_role` or secret key.
+1. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
+2. Add a repository secret named `SUPABASE_ANON_KEY` with the project's **anon public key** (the same public key used as `VITE_SUPABASE_ANON_KEY`). Never use a `service_role` or secret key.
+3. Merge the pull request that adds this workflow.
 4. Open **Actions → Supabase activity → Run workflow** once to verify the secret and database request. Future runs are scheduled for 08:17, 14:17, and 20:17 in São Paulo time.
 
 The project URL is already set in the workflow and is not a credential. The response body is discarded; the run only reports whether the request succeeded.
