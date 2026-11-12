@@ -3,6 +3,7 @@ import type { CSSProperties, ChangeEvent, MouseEvent } from 'react';
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Heart, Instagram, Mail, Menu, MessageCircle, Search, Truck, X, Zap } from 'lucide-react';
 import OurStory from '../components/OurStory';
 import { fetchPublicCatalog } from '../services/catalogService';
+import { cashTotalCents, describeInstallmentPayments, describeInstallments, formatCents, getInstallmentOptions, summarizeInstallments } from '../lib/installments';
 import type { Category, Product, SiteBanner, SiteSettings } from '../types/catalog';
 import { defaultSiteSettings } from '../types/catalog';
 import voelSplashLogo from '../../img/voel-splash-logo.png';
@@ -274,8 +275,9 @@ function formatCepInput(value: string) {
 }
 
 function getInstallmentText(product: Product) {
-  if (product.maxInstallments <= 1) return '';
-  return `ou ${product.maxInstallments}x de ${formatCurrency(product.price / product.maxInstallments)}`;
+  const options = getInstallmentOptions(product);
+  const quote = options[options.length - 1];
+  return quote ? `ou ${summarizeInstallments(quote)}` : '';
 }
 
 function getImageUrls(imageValue: Product['colorImages'][string] | undefined) {
@@ -755,7 +757,7 @@ function ProductDetailsModal({
   onToggleFavorite,
   onBuy,
 }: ProductDetailsModalProps) {
-  const installmentText = getInstallmentText(product);
+  const unitInstallmentOptions = getInstallmentOptions(product);
   const publicColorOptions = useMemo(() => getPublicColorOptions(product), [product]);
   const selectedPublicColor = useMemo(() => findPublicColorOption(product, selectedColor), [product, selectedColor]);
   const publicSizeOptions = useMemo(() => getPublicSizeOptions(product), [product]);
@@ -765,7 +767,7 @@ function ProductDetailsModal({
   const stockNotice = getStockNotice(product);
   const outOfStock = isOutOfStock(product);
   const maxQuantity = outOfStock ? 1 : Math.max(1, Math.floor(Number(product.stockQuantity) || 1));
-  const maxInstallments = Math.max(1, Math.floor(Number(product.maxInstallments) || 1));
+  const maxInstallments = unitInstallmentOptions[unitInstallmentOptions.length - 1]?.count ?? 1;
   const canChooseInstallments = !outOfStock && maxInstallments > 1;
   const [purchaseError, setPurchaseError] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -777,8 +779,9 @@ function ProductDetailsModal({
   const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const selectedInstallmentCount = Math.min(Math.max(2, selectedInstallments), Math.max(2, maxInstallments));
-  const subtotal = product.price * quantity;
-  const installmentValue = subtotal / selectedInstallmentCount;
+  const subtotalCents = cashTotalCents(product.price, quantity);
+  const installmentOptions = getInstallmentOptions(product, quantity);
+  const selectedQuote = installmentOptions.find(quote => quote.count === selectedInstallmentCount);
   const selectedImage = galleryImages[activeImageIndex] ?? galleryImages[0] ?? '';
 
   useEffect(() => {
@@ -1052,10 +1055,7 @@ function ProductDetailsModal({
             </div>
 
             <div className="mb-8 space-y-2 border-b border-[#E5E0D8] pb-8">
-              <p className="text-xl font-semibold tracking-widest text-[#3D3835]">{formatCurrency(product.price)}</p>
-              {installmentText && (
-                <p className="text-sm text-[#8B7355]">{installmentText}</p>
-              )}
+              <p className="text-xl font-semibold tracking-widest text-[#3D3835]">{formatCurrency(product.price)} à vista</p>
               {stockNotice && (
                 <p className={`text-sm font-semibold ${outOfStock ? 'text-red-700' : 'text-amber-700'}`}>{stockNotice}</p>
               )}
@@ -1110,7 +1110,7 @@ function ProductDetailsModal({
                 <div className="space-y-3">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                     <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#7A7067]">Quantidade</p>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8B7355]">Subtotal {formatCurrency(subtotal)}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8B7355]">Subtotal à vista {formatCents(subtotalCents)}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
@@ -1186,20 +1186,31 @@ function ProductDetailsModal({
                   </div>
 
                   {canChooseInstallments && paymentMode === 'installments' && (
-                    <div className="grid gap-3 sm:grid-cols-[140px_1fr] sm:items-center">
+                    <div className="space-y-2">
                       <select
                         value={selectedInstallmentCount}
                         onChange={(event) => setSelectedInstallments(Number(event.target.value))}
-                        className="h-12 rounded-lg border border-[#D8D0C4] bg-white px-4 text-sm font-semibold tracking-[0.12em] text-[#3D3835] outline-none transition-colors focus:border-[#8B7355]"
+                        className="h-12 w-full rounded-lg border border-[#D8D0C4] bg-white px-4 text-sm font-semibold tracking-[0.12em] text-[#3D3835] outline-none transition-colors focus:border-[#8B7355]"
                         aria-label="Quantidade de parcelas"
                       >
-                        {Array.from({ length: maxInstallments - 1 }, (_, index) => index + 2).map(installmentCount => (
-                          <option key={installmentCount} value={installmentCount}>{installmentCount}x</option>
+                        {installmentOptions.map(quote => (
+                          <option key={quote.count} value={quote.count}>{summarizeInstallments(quote)}</option>
                         ))}
                       </select>
-                      <p className="text-xs leading-relaxed tracking-wide text-[#8B7355]">
-                        aprox. {formatCurrency(installmentValue)} por parcela
-                      </p>
+                      {selectedQuote && (
+                        <div className="space-y-2 text-xs leading-relaxed text-[#8B7355]">
+                          <p aria-live="polite">Total {formatCents(selectedQuote.totalCents)}</p>
+                          <details>
+                            <summary className="cursor-pointer text-[#7A7067]">Ver condições</summary>
+                            <div className="mt-2 space-y-1 text-[#7A7067]">
+                              <p>Acréscimo total de {selectedQuote.rate.toLocaleString('pt-BR')}%. Frete à parte.</p>
+                              {selectedQuote.payments.some(payment => payment !== selectedQuote.payments[0]) && (
+                                <p>Ajuste de centavos: {describeInstallmentPayments(selectedQuote)}.</p>
+                              )}
+                            </div>
+                          </details>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1535,14 +1546,14 @@ export default function PublicCatalog() {
   const handleBuyNow = (product: Product, options?: PurchaseOptions) => {
     const outOfStock = isOutOfStock(product);
     const quantity = outOfStock ? 1 : Math.max(1, Math.floor(Number(options?.quantity) || 1));
-    const subtotal = product.price * quantity;
-    const maxInstallments = Math.max(1, Math.floor(Number(product.maxInstallments) || 1));
-    const isInstallmentPayment = !outOfStock && options?.paymentMode === 'installments' && maxInstallments > 1;
-    const installmentCount = isInstallmentPayment
-      ? Math.min(Math.max(2, Math.floor(Number(options?.installments) || 2)), maxInstallments)
+    const subtotalCents = cashTotalCents(product.price, quantity);
+    const installmentOptions = getInstallmentOptions(product, quantity);
+    const selectedQuote = !outOfStock && options?.paymentMode === 'installments'
+      ? installmentOptions.find(quote => quote.count === options.installments)
       : undefined;
-    const paymentDescription = isInstallmentPayment && installmentCount
-      ? `Parcelado em ${installmentCount}x de aproximadamente ${formatCurrency(subtotal / installmentCount)}`
+    const isInstallmentPayment = Boolean(selectedQuote);
+    const paymentDescription = selectedQuote
+      ? `Parcelado: ${describeInstallments(selectedQuote)}`
       : 'À vista';
     const selectedPublicColor = options?.color ? findPublicColorOption(product, options.color) : '';
     const publicSizeOptions = getPublicSizeOptions(product);
@@ -1554,15 +1565,15 @@ export default function PublicCatalog() {
     const finalMessage = outOfStock
       ? 'Poderia me avisar sobre disponibilidade?'
       : isInstallmentPayment
-        ? 'Pode gerar o link de crédito para pagamento?'
+        ? 'Pode confirmar estas condições e enviar o link de crédito? O total informado já inclui o acréscimo, sem frete.'
         : 'Pode me passar o PIX para pagamento?';
 
     const message = [
       outOfStock ? 'Olá! Gostaria de consultar reposição do produto:' : 'Olá! Tenho interesse no produto:',
       `Produto: ${product.name}`,
-      `Preço unitário: ${formatCurrency(product.price)}`,
+      `Preço unitário à vista: ${formatCurrency(product.price)}`,
       `Quantidade: ${quantity}`,
-      `Subtotal: ${formatCurrency(subtotal)}`,
+      `Subtotal à vista: ${formatCents(subtotalCents)}`,
       product.category ? `Categoria: ${product.category}` : '',
       selectedPublicColor ? `Cor selecionada: ${selectedPublicColor}` : '',
       selectedPublicSize ? `Tamanho: ${selectedPublicSize}` : '',
@@ -1929,8 +1940,8 @@ export default function PublicCatalog() {
                           <p className="truncate text-[8px] font-medium uppercase tracking-[0.14em] text-[#9B8F7E] sm:text-[9px] md:tracking-[0.2em]">{product.category}</p>
                           <h3 className="overflow-hidden text-[11px] font-light leading-snug tracking-[0.05em] text-[#3D3835] transition-colors [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] group-hover:text-[#8B7355] sm:text-xs md:text-sm md:tracking-[0.1em]">{product.name}</h3>
                           <p className="hidden text-[10px] leading-relaxed tracking-wide text-[#9B8F7E] md:block">{product.description}</p>
-                          <p className="pt-0.5 text-[11px] font-semibold tracking-widest text-[#3D3835] md:pt-1 md:text-xs">{formatCurrency(product.price)}</p>
-                          {product.maxInstallments > 1 && (
+                          <p className="pt-0.5 text-[11px] font-semibold tracking-widest text-[#3D3835] md:pt-1 md:text-xs">{formatCurrency(product.price)} à vista</p>
+                          {getInstallmentText(product) && (
                             <p className="text-[9px] leading-snug tracking-wide text-[#8B7355] md:text-[10px]">{getInstallmentText(product)}</p>
                           )}
                           {getStockNotice(product) && (
