@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { ArrowDown, ArrowUp, ChevronsUpDown, Edit3, ImagePlus, Loader2, LogOut, Package, Plus, RefreshCw, Save, Search, Settings, Tags, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { calculateInstallments, cashTotalCents, describeInstallments, getInstallmentOptions, InstallmentValidationError, parseInstallmentRate, validateInstallmentSettings } from '../lib/installments';
 import {
   CatalogMutationError,
   clearProductTagFromProducts,
@@ -45,6 +46,8 @@ const emptyProductForm: ProductInput = {
   imageUrl: '',
   imagePath: null,
   maxInstallments: 1,
+  installmentRate2: 0,
+  installmentRate3: 0,
   availableSizes: [],
   availableColors: [],
   colorImages: {},
@@ -572,6 +575,8 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
   const [priceText, setPriceText] = useState('');
   const [stockText, setStockText] = useState('0');
   const [installmentsText, setInstallmentsText] = useState('1');
+  const [rate2Text, setRate2Text] = useState('0');
+  const [rate3Text, setRate3Text] = useState('0');
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [customSizeText, setCustomSizeText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -662,6 +667,8 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setPriceText('');
     setStockText('0');
     setInstallmentsText('1');
+    setRate2Text('0');
+    setRate3Text('0');
     setSelectedSizes([]);
     setCustomSizeText('');
     setImageFile(null);
@@ -782,6 +789,16 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
       if (maxInstallments === null) {
         throw new Error('installments-required');
       }
+
+      const installmentRate2 = parseInstallmentRate(rate2Text);
+      const installmentRate3 = parseInstallmentRate(rate3Text);
+      if (installmentRate2 === null || installmentRate3 === null) {
+        throw new InstallmentValidationError('Informe taxas totais válidas, não negativas, com até duas casas decimais.');
+      }
+      validateInstallmentSettings({ maxInstallments, installmentRate2, installmentRate3 });
+      cashTotalCents(price);
+      calculateInstallments(price, 2, installmentRate2);
+      calculateInstallments(price, 3, installmentRate3);
 
       const availableSizes = uniqueSizeValues(selectedSizes);
 
@@ -904,6 +921,8 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
           price,
           stockQuantity,
           maxInstallments,
+          installmentRate2,
+          installmentRate3,
           availableSizes,
           availableColors,
           colorImages,
@@ -917,7 +936,9 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
       await loadCatalog();
     } catch (saveError) {
       const typedError = saveError as Error;
-      if (typedError.message === 'name-required') {
+      if (saveError instanceof InstallmentValidationError) {
+        setError(saveError.message);
+      } else if (typedError.message === 'name-required') {
         setError('Informe o nome do produto.');
       } else if (typedError.message === 'category-required') {
         setError('Selecione uma categoria para o produto.');
@@ -926,7 +947,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
       } else if (typedError.message === 'stock-required') {
         setError('Informe um estoque válido, com número inteiro maior ou igual a zero.');
       } else if (typedError.message === 'installments-required') {
-        setError('Informe uma quantidade de parcelas válida, com número inteiro maior ou igual a 1.');
+        setError('Selecione parcelamento desabilitado, 2x ou 3x.');
       } else if (typedError.message === 'size-required') {
         setError('Informe pelo menos um tamanho disponível para a peça.');
       } else if (typedError.message === 'image-required') {
@@ -1001,6 +1022,8 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
       imageUrl: product.imageUrl,
       imagePath: product.imagePath,
       maxInstallments: product.maxInstallments,
+      installmentRate2: product.installmentRate2,
+      installmentRate3: product.installmentRate3,
       availableSizes: product.availableSizes,
       availableColors: product.availableColors,
       colorImages: product.colorImages,
@@ -1011,6 +1034,8 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
     setPriceText(formatPriceInput(product.price));
     setStockText(String(product.stockQuantity ?? 0));
     setInstallmentsText(String(Math.max(1, Number(product.maxInstallments) || 1)));
+    setRate2Text(String(product.installmentRate2).replace('.', ','));
+    setRate3Text(String(product.installmentRate3).replace('.', ','));
     const editableSizes = uniqueSizeValues(product.availableSizes);
     setSelectedSizes(editableSizes);
     if (editableSizes.length === 0) {
@@ -1758,9 +1783,9 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                 </FormBlock>
 
                 <FormBlock title="Preço e estoque">
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block space-y-1.5">
-                      <span className={labelClass}>Preço</span>
+                      <span className={labelClass}>Preço à vista</span>
                       <input
                         type="text"
                         inputMode="decimal"
@@ -1784,18 +1809,57 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                       />
                     </label>
 
+                  </div>
+                </FormBlock>
+
+                <FormBlock title="Parcelamento">
+                  <label className="flex items-center gap-2 text-sm text-[#3D3835]">
+                    <input
+                      type="checkbox"
+                      checked={Number(installmentsText) > 1}
+                      onChange={event => setInstallmentsText(event.target.checked ? '3' : '1')}
+                      className="accent-[#8B7355]"
+                    />
+                    Habilitar parcelamento
+                  </label>
+                  <p className="text-xs leading-relaxed text-[#7A7067]">
+                    As taxas são acréscimos percentuais totais sobre o preço à vista, não juros mensais. Use 0 para oferecer sem juros.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-3">
                     <label className="block space-y-1.5">
-                      <span className={labelClass}>Parcelas</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={installmentsText}
-                        onChange={(event) => setInstallmentsText(event.target.value)}
-                        className={fieldClass}
-                        placeholder="1"
-                      />
+                      <span className={labelClass}>Máximo de parcelas</span>
+                      <select
+                        value={installmentsText === '1' ? '3' : installmentsText}
+                        disabled={installmentsText === '1'}
+                        onChange={event => setInstallmentsText(event.target.value)}
+                        className={`${selectClass} disabled:opacity-50`}
+                      >
+                        <option value="2">2x</option>
+                        <option value="3">3x</option>
+                      </select>
                     </label>
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Taxa total 2x (%)</span>
+                      <input type="text" inputMode="decimal" value={rate2Text} onChange={event => setRate2Text(event.target.value)} className={fieldClass} />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className={labelClass}>Taxa total 3x (%)</span>
+                      <input type="text" inputMode="decimal" value={rate3Text} onChange={event => setRate3Text(event.target.value)} className={fieldClass} />
+                    </label>
+                  </div>
+                  <div aria-live="polite" className="space-y-2 rounded-lg bg-[#F5F1EC] p-3 text-xs leading-relaxed text-[#7A7067]">
+                    {installmentsText === '1' ? (
+                      <p>Parcelamento desabilitado. Somente o preço à vista será exibido; as taxas ficam guardadas.</p>
+                    ) : (() => {
+                      const options = getInstallmentOptions({
+                        price: parsePriceInput(priceText) ?? NaN,
+                        maxInstallments: Number(installmentsText),
+                        installmentRate2: parseInstallmentRate(rate2Text) ?? NaN,
+                        installmentRate3: parseInstallmentRate(rate3Text) ?? NaN,
+                      });
+                      return options.length ? options.map(quote => <p key={quote.count}>{quote.count} parcelas: {describeInstallments(quote)}</p>) : <p>Informe preço e taxas válidos, com até duas casas decimais, para visualizar.</p>;
+                    })()}
+                    <p>Prévia informativa. Confira o total no link da operadora e evite acrescentar os juros novamente.</p>
                   </div>
                 </FormBlock>
 
@@ -2282,7 +2346,7 @@ export default function AdminDashboard({ navigate, session }: AdminDashboardProp
                         </div>
                         <p className="line-clamp-2 text-sm text-[#7A7067]">{product.description}</p>
                         <p className="text-xs uppercase tracking-[0.2em] text-[#9B8F7E]">
-                          {product.category} · {formatPrice(product.price)} · até {product.maxInstallments}x · estoque {product.stockQuantity}
+                          {product.category} · {formatPrice(product.price)} à vista · {product.maxInstallments > 1 ? `até ${product.maxInstallments}x` : 'sem parcelamento'} · estoque {product.stockQuantity}
                         </p>
                         <div className="grid gap-2 pt-2 sm:grid-cols-3">
                           <button

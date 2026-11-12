@@ -46,6 +46,8 @@ export interface Product {
   imageUrl: string;
   imagePath?: string | null;
   maxInstallments: number;
+  installmentRate2: number;
+  installmentRate3: number;
   availableSizes: string[];
   availableColors: string[];
   colorImages: ProductColorImages;
@@ -83,6 +85,8 @@ export interface ProductInput {
   imageUrl: string;
   imagePath?: string | null;
   maxInstallments: number;
+  installmentRate2: number;
+  installmentRate3: number;
   availableSizes: string[];
   availableColors: string[];
   colorImages: ProductColorImages;

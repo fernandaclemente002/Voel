@@ -29,6 +29,8 @@ const fallbackProducts: Product[] = [
     tag: 'Destaque',
     stockQuantity: 8,
     maxInstallments: 3,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['P', 'M', 'G'],
     availableColors: ['Vermelho'],
     colorImages: {
@@ -50,6 +52,8 @@ const fallbackProducts: Product[] = [
     tag: 'Novo',
     stockQuantity: 5,
     maxInstallments: 3,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['P', 'M', 'G', 'GG'],
     availableColors: ['Laranja'],
     colorImages: {
@@ -71,6 +75,8 @@ const fallbackProducts: Product[] = [
     tag: 'Destaque',
     stockQuantity: 12,
     maxInstallments: 2,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['P', 'M', 'G'],
     availableColors: ['Bege'],
     colorImages: {
@@ -91,7 +97,9 @@ const fallbackProducts: Product[] = [
     categorySlug: 'vestidos',
     tag: 'Exclusivo',
     stockQuantity: 4,
-    maxInstallments: 4,
+    maxInstallments: 3,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['M', 'G'],
     availableColors: ['Vermelho'],
     colorImages: {
@@ -112,7 +120,9 @@ const fallbackProducts: Product[] = [
     categorySlug: 'conjuntos',
     tag: 'Destaque',
     stockQuantity: 6,
-    maxInstallments: 5,
+    maxInstallments: 3,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['P', 'M', 'G'],
     availableColors: ['Vermelho'],
     colorImages: {
@@ -133,7 +143,9 @@ const fallbackProducts: Product[] = [
     categorySlug: 'conjuntos',
     tag: 'Sale',
     stockQuantity: 3,
-    maxInstallments: 4,
+    maxInstallments: 3,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['P', 'M'],
     availableColors: ['Off white'],
     colorImages: {
@@ -155,6 +167,8 @@ const fallbackProducts: Product[] = [
     tag: 'Nenhuma',
     stockQuantity: 9,
     maxInstallments: 3,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['P', 'M', 'G'],
     availableColors: ['Vermelho'],
     colorImages: {
@@ -176,6 +190,8 @@ const fallbackProducts: Product[] = [
     tag: 'Nenhuma',
     stockQuantity: 7,
     maxInstallments: 3,
+    installmentRate2: 0,
+    installmentRate3: 0,
     availableSizes: ['P', 'M', 'G'],
     availableColors: ['Preto'],
     colorImages: {

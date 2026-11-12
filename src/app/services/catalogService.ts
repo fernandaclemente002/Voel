@@ -1,4 +1,5 @@
 import { fallbackCatalog } from '../data/fallbackCatalog';
+import { calculateInstallments, cashTotalCents, validateInstallmentSettings } from '../lib/installments';
 import { isSupabaseConfigured, productImagesBucket, requireSupabase, supabase } from '../lib/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
@@ -70,6 +71,8 @@ type ProductRow = {
   image_url: string | null;
   image_path: string | null;
   max_installments: number | null;
+  installment_rate_2: number | string;
+  installment_rate_3: number | string;
   available_sizes: unknown;
   available_colors: string[] | null;
   color_images: unknown;
@@ -407,6 +410,8 @@ function mapProduct(row: ProductRow, categoriesById: Map<string, Category>): Pro
     imageUrl: row.image_url?.trim() || getFirstColorImageUrl(colorImages),
     imagePath: row.image_path,
     maxInstallments: Math.max(1, Number(row.max_installments ?? 1)),
+    installmentRate2: Number(row.installment_rate_2),
+    installmentRate3: Number(row.installment_rate_3),
     availableSizes: normalizeProductSizes(row.available_sizes),
     availableColors: uniqueTextValues([...(row.available_colors ?? []), ...Object.keys(colorImages)])
       .filter(color => !isComplementaryImageGroupName(color)),
@@ -548,6 +553,10 @@ function toCategoryPayload(input: CategoryInput) {
 }
 
 function toProductPayload(input: ProductInput) {
+  validateInstallmentSettings(input);
+  cashTotalCents(input.price);
+  calculateInstallments(input.price, 2, input.installmentRate2);
+  calculateInstallments(input.price, 3, input.installmentRate3);
   const colorImages = normalizeColorImages(input.colorImages);
   const tags = uniqueTextValues(input.tags ?? [input.tag])
     .filter(tag => tag && tag !== 'Nenhuma');
@@ -561,7 +570,9 @@ function toProductPayload(input: ProductInput) {
     tag: tags.length > 0 ? tags.join(', ') : 'Nenhuma',
     image_url: input.imageUrl,
     image_path: input.imagePath ?? null,
-    max_installments: Math.max(1, Number(input.maxInstallments) || 1),
+    max_installments: input.maxInstallments,
+    installment_rate_2: input.installmentRate2,
+    installment_rate_3: input.installmentRate3,
     available_sizes: normalizeProductSizes(input.availableSizes),
     available_colors: uniqueTextValues([...input.availableColors, ...Object.keys(colorImages)])
       .filter(color => !isComplementaryImageGroupName(color)),
@@ -659,7 +670,7 @@ export async function fetchPublicCatalog(): Promise<CatalogData> {
         .order('name', { ascending: true }),
       supabase
         .from('products')
-        .select('id,name,description,price,stock_quantity,category_id,tag,image_url,image_path,max_installments,available_sizes,available_colors,color_images,sku,details,is_active,created_at,updated_at')
+        .select('id,name,description,price,stock_quantity,category_id,tag,image_url,image_path,max_installments,installment_rate_2,installment_rate_3,available_sizes,available_colors,color_images,sku,details,is_active,created_at,updated_at')
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
       supabase
@@ -721,7 +732,7 @@ export async function fetchAdminCatalog() {
         .order('name', { ascending: true }),
       client
         .from('products')
-        .select('id,name,description,price,stock_quantity,category_id,tag,image_url,image_path,max_installments,available_sizes,available_colors,color_images,sku,details,is_active,created_at,updated_at')
+        .select('id,name,description,price,stock_quantity,category_id,tag,image_url,image_path,max_installments,installment_rate_2,installment_rate_3,available_sizes,available_colors,color_images,sku,details,is_active,created_at,updated_at')
         .order('created_at', { ascending: false }),
       client
         .from('product_tags')
